@@ -1,0 +1,8 @@
+#usda 1.0
+# A root layer that authors no upAxis or metersPerUnit over a sublayer that authors both (base.usda). Stage metadata
+# comes from the root layer only, so its stage is Y-up in centimeters, and a Stage Output on it warns.
+(
+    subLayers = [
+        @./base.usda@
+    ]
+)

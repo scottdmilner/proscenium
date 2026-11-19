@@ -1,0 +1,136 @@
+#usda 1.0
+# Zones whose chains are wrong, one group of nodes per error (docs/phase3/node-tree.md "What a zone holds"):
+# - Branch links its Editable Layer to two ends, its own and Other's, so neither chain reaches its end.
+# - Dead's Editable Layer links to nothing, so its chain doesn't reach DeadEnd, and DeadOut gets nothing from DeadEnd.
+# - CrossA and CrossB each link to the other's end.
+# - Lone names no end, and no begin names LoneEnd, though Lone links to it.
+# - Wrong's zone:end names a Stage Output.
+# - TwinA and TwinB both name TwinEnd.
+# - NotABegin authors zone:end, which only a begin has.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def NewLayerZoneBegin "Branch"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/BranchEnd>
+    }
+
+    def NewLayerZoneEnd "BranchEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Branch.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Other"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/OtherEnd>
+    }
+
+    def NewLayerZoneEnd "OtherEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Branch.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Dead"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/DeadEnd>
+    }
+
+    def NewLayerZoneEnd "DeadEnd"
+    {
+        int node:version = 1
+        opaque outputs:layer
+    }
+
+    def StageOutput "DeadOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/DeadEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "CrossA"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/CrossAEnd>
+    }
+
+    def NewLayerZoneEnd "CrossAEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/CrossB.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "CrossB"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/CrossBEnd>
+    }
+
+    def NewLayerZoneEnd "CrossBEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/CrossA.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Lone"
+    {
+        int node:version = 1
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneEnd "LoneEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Lone.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Wrong"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/DeadOut>
+    }
+
+    def NewLayerZoneBegin "TwinA"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/TwinEnd>
+    }
+
+    def NewLayerZoneBegin "TwinB"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/TwinEnd>
+    }
+
+    def NewLayerZoneEnd "TwinEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/TwinA.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "NotABegin"
+    {
+        int node:version = 1
+        rel zone:end = </Tree/TwinEnd>
+    }
+}

@@ -1,0 +1,200 @@
+#usda 1.0
+(
+    """The node definitions: one class prim per node type, named for the type, which is also the type name of that
+    node's prims in a tree (docs/phase3/node-tree.md "Node definitions"). The cook loads it through Sdf, never
+    registers it with USD, and checks that each definition has an implementation in tree_cook/nodes/node_registry.cpp,
+    and the reverse; tools/node_attributes.py writes each type's attribute header from it.
+
+    A class prim holds `int node:version` and `doc`, and an attribute per input (inputs:), output (outputs:), and
+    property (props:), with its type and default. A zone's begin and end name each other in the class prim's
+    customData: `zone`, "begin" or "end", and `zonePartner`, the other's type. A begin's prims in a tree name their end
+    with `rel zone:end`. Menus are allowedTokens. Each attribute's customData holds what USD's types can't:
+    - socket: "Layer", "EditableLayer", "File", "Prim", or "Prims"; a value socket or property has none, and its type
+      is its USD value type. Layer and EditableLayer sockets are opaque; File, Prim, and Prims are strings.
+    - multiInput: true for a Layer input that takes several links, in connection order.
+    - optional: true for a property that is unauthored unless set, which a node reads as an AuthoredField.
+    - dynamicType: true for a value whose type follows another property, which a node reads as a VtValue.
+    - mutePassThrough, on an output: the input whose value a muted node passes through it.
+    - takesEditableLayer: true for a Layer input that also takes an Editable Layer link, partway down a chain: the
+      Viewer's.
+    - closedMenu: true for a menu USD takes no other value for, such as a specifier: a token outside it is an error,
+      where another menu's is a warning.
+
+    An authoring node, one outside a zone's begin and end with an Editable Layer input, computes its other outputs from
+    its own inputs and properties alone, never from its zone's stage, so they're computed with the value nodes, before
+    any task runs (docs/plans/cook-module.md "Edges between tasks"). Its implementation's outputs hook gets no stage,
+    and loading checks that it has one exactly when its definition has such outputs.
+
+    A Path property is a string, as typed: `//` starts a path relative to the base directory, and any other path goes
+    to USD's resolver as written (docs/phase3/node-tree.md "The tree as plain data")."""
+)
+
+class "LayerFromFile" (
+    doc = "Reads a layer: the process's shared copy of the file at Path, which it never authors into."
+)
+{
+    int node:version = 1
+    string props:path = "" (
+        doc = "The file to read, `//` relative to the .blend."
+    )
+    opaque outputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+}
+
+class "StageOutput" (
+    doc = """Names one of the tree's stages: the stage composed on its input Layer, with every payload loaded, which
+    a binding displays."""
+)
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+    bool props:coordinateConversion = 0 (
+        doc = """The binding's units and up-axis conversion, off by default, which the front end reads; the cook
+        doesn't convert."""
+    )
+}
+
+class "Viewer" (
+    doc = """Names the stage the editor's UI shows: the stage composed on its input Layer, with every payload loaded,
+    which feeds no binding and isn't converted. Linked partway down a chain, its Layer is a copy of the zone's layer as
+    the chain has left it there."""
+)
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "Layer"
+            bool takesEditableLayer = 1
+        }
+    )
+    bool props:context = 1 (
+        doc = """Composes a New Layer Zone's layer over the zone's context; any other layer has none, and is
+        composed alone."""
+    )
+}
+
+class "NewLayerZoneBegin" (
+    customData = {
+        string zone = "begin"
+        string zonePartner = "NewLayerZoneEnd"
+    }
+    doc = """Begins a New Layer Zone: a new layer, authored by the zone's chain, which Write saves to File. Its
+    Editable Layer starts as a copy of Template, or empty."""
+)
+{
+    int node:version = 1
+    string inputs:file = "" (
+        customData = {
+            string socket = "File"
+        }
+        doc = "Where Write saves the zone's layer, `//` relative to the .blend."
+    )
+    opaque inputs:template (
+        customData = {
+            string socket = "Layer"
+        }
+        doc = """The layer the zone starts from, read live and never written: its prims and layer metadata, with its
+        relative asset paths anchored to its file. Unlinked, the zone starts empty."""
+    )
+    opaque outputs:layer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+}
+
+class "NewLayerZoneEnd" (
+    customData = {
+        string zone = "end"
+        string zonePartner = "NewLayerZoneBegin"
+    }
+    doc = "Ends a New Layer Zone: its Layer is the zone's finished layer, as its chain authored it."
+)
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+    string inputs:defaultPrim = "" (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = """The prim that a reference or payload without a target prim composes, replacing the Template's.
+        Empty, the layer keeps the Template's, and with no Template it has none."""
+    )
+    opaque outputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+}
+
+class "Prim" (
+    doc = "A single prim path."
+)
+{
+    int node:version = 1
+    string props:path = "" (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = "An absolute prim path, such as /World/Chair."
+    )
+    string outputs:prim (
+        customData = {
+            string socket = "Prim"
+        }
+    )
+}
+
+class "CreatePrim" (
+    doc = """Authors one new prim spec, Parent joined with Name, and an `over` for each ancestor its layer lacks. Edit
+    Prim edits prims that already exist."""
+)
+{
+    int node:version = 1
+    opaque inputs:editableLayer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+    string inputs:parent = "/" (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = "The new prim's parent: / for a root prim."
+    )
+    string inputs:name = "" (
+        doc = "The new prim's name, a valid identifier."
+    )
+    token props:specifier = "def" (
+        allowedTokens = ["def", "over", "class"]
+        customData = {
+            bool closedMenu = 1
+        }
+    )
+    token props:type = "" (
+        doc = "A registered prim type, such as Xform, Scope, or Mesh; empty for a typeless prim."
+    )
+    opaque outputs:editableLayer (
+        customData = {
+            string mutePassThrough = "inputs:editableLayer"
+            string socket = "EditableLayer"
+        }
+    )
+    string outputs:prim (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = "The new prim's path, Parent joined with Name."
+    )
+}

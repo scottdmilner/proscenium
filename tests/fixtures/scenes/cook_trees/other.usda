@@ -1,0 +1,10 @@
+#usda 1.0
+# A second layer to read, apart from base.usda, so a test can tell which of two links a Stage Output kept.
+(
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Other"
+{
+}

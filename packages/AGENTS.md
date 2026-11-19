@@ -13,4 +13,4 @@ Every directory here has a `README.md` that names each of its files and subdirec
 - Tooling, stubs, and `bpy` go in the dev group, and never ship.
 - Never bundle another OpenUSD build. The extension uses the `pxr` bundled with Blender.
 
-The planner's C++ has its own rules ([proscenium_sync's planner](proscenium_sync/src/proscenium_sync/planner/AGENTS.md)).
+The planner's C++ has its own rules ([proscenium_sync's planner](proscenium_sync/src/proscenium_sync/planner/AGENTS.md)), and so does the cook's ([proscenium_cook's tree_cook](proscenium_cook/src/proscenium_cook/tree_cook/AGENTS.md)).

@@ -1,0 +1,5 @@
+#usda 1.0
+# A file that doesn't parse as a layer, for Layer from File's unreadable-file error: the prim below has no name.
+def Xform
+{
+}

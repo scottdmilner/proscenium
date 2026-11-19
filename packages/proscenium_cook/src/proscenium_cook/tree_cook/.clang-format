@@ -1,0 +1,3 @@
+# The cook's C++ style (clang-format, run by pre-commit), the planner's.
+BasedOnStyle: Google
+ColumnLimit: 120

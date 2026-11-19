@@ -32,6 +32,8 @@ def test_bpy_free_packages_import_without_bpy() -> None:
             "proscenium_sync.planner",
             "--walk",
             "proscenium_sync.source_access",
+            "--walk",
+            "proscenium_cook",
         ],
         capture_output=True,
         text=True,

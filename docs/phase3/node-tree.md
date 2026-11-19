@@ -81,10 +81,11 @@ A New Layer Zone or a Variant Zone holds its chain ([Layers as Values](#layers-a
 
 Errors, each following from the chain:
 - **A branch:** an Editable Layer output linked to two inputs, other than the active Viewer, reported on the node that branches.
-- **A broken chain:** the path from a begin doesn't reach its end, because it dead-ends or the end's input comes from another chain, which is also how an Editable Layer crossing into another zone appears. The end reports it, and each node past the break reports that its edits never reach the end.
+- **A broken chain:** the path from a begin doesn't reach its end, because it dead-ends or the end's input comes from another chain, which is also how an Editable Layer crossing into another zone appears. The end reports it, and each node on the begin's chain warns that its edits never reach the end.
 - **An authoring node in no chain:** its Editable Layer input is unlinked or doesn't trace back to a begin. It reports it, and the nodes after it pass nothing on.
 - **Overlapping zones:** pairs on one chain must nest as brackets, so begin 1, begin 2, end 1, end 2 is an error on both pairs. A Variant Zone whose begin isn't on a New Layer Zone's chain is an error.
 - **A mismatched pair:** an end that the chain of a begin other than its own reaches. Pairs are named by a relationship ([The Tree as Plain Data](#the-tree-as-plain-data)), not by structure, so this is checked.
+- **An unpaired begin or end:** a begin whose `zone:end` doesn't name one end of its kind, or names one that another begin names too, and an end that no one begin names.
 - **A Substitution Zone's own errors** are on its begin and its end ([Substitution Zone](#substitution-zone)). A New Layer Zone nested in one can hold a Variant Zone, and a Substitution Zone never sits on a chain.
 
 Muted nodes stay on their chain and pass their Editable Layer through.
@@ -246,7 +247,7 @@ So an attribute's type change is changed info, not a resync, and a change to a l
 ### Diagnostics
 
 Each node reports its own errors and warnings on itself.
-- A node with an error passes its Editable Layer through unchanged, and the nodes after it run, so the rest of the result still shows.
+- An error in a chain stops it: the zone gives no layer out, the nodes after the one with the error don't run, and the zone's end warns, naming it. A layer with an edit missing never reaches a stage as if it were whole. A muted node isn't an error: it stays on its chain and passes its Editable Layer through.
 - Composition errors (`UsdStage::GetCompositionErrors`), such as an unresolved asset path or a relocate USD rejects, are reported on the node that authored the arc ([Provenance](#provenance)). An arc in a file the tree reads reports on the Layer from File node or Substitution Zone begin that reads it.
 - Verification warnings from a Stage Output's stage are reported on the node whose edit is hidden ([The Zone's Stage](#the-zones-stage)).
 - Write refuses while any node that some Stage Output depends on has an error, so a file never holds a result with an edit missing. Errors on nodes with no path of links to a Stage Output don't block Write.
@@ -263,7 +264,7 @@ The cook records, from its first version, which node authored each edit and wher
 | A prim field | prim path and field | `/World/Chair` `kind` → Edit Prim |
 | A list-op item | prim path, field, and item | `/Set` references `@…/chair.usda@` → Reference |
 | Layer metadata | field and item | a `subLayers` entry → Sublayer; a `relocates` entry → Relocate |
-| A prim spec | prim path | Create Prim; Template content → the zone's begin node; implicit `over` ancestors → the node that needed them |
+| A prim spec | prim path | Create Prim; Template content → the zone's begin node; implicit `over` ancestors → the node that needed them, until a Create Prim takes one |
 
 - Paths are keyed as authored, so an edit inside a variant is at `/A{look=red}Child`.
 - Only the last writer is kept. A node whose write a later node replaces is warned while authoring, as [List Edits](#list-edits) does for Explicit.
@@ -377,7 +378,7 @@ Blender has only a few socket shapes, so each family's sockets share a color, an
 Each node lists its inputs, outputs, and properties (set on the node, not linked), then what it authors and what it reports.
 
 Two rules hold across nodes:
-- **Known sets are offered.** Wherever a node takes a token from a known set, it offers that set as a menu or a search: a token attribute's schema `allowedTokens` (`visibility`, `purpose`, `subdivisionScheme`, …), the registered kinds (**Checked:** `group`, `component`, `assembly`, `model`, `subcomponent`), registered schema and API schema names, and variant sets and variants on the stage being checked. The set is a suggestion where USD allows other values: **Checked:** setting `subdivisionScheme` to `bogus` succeeded and read back `bogus`, and a pipeline can register its own kinds. A value outside the set is a warning, not an error. `upAxis` is the one closed set.
+- **Known sets are offered.** Wherever a node takes a token from a known set, it offers that set as a menu or a search: a token attribute's schema `allowedTokens` (`visibility`, `purpose`, `subdivisionScheme`, …), the registered kinds (**Checked:** `group`, `component`, `assembly`, `model`, `subcomponent`), registered schema and API schema names, and variant sets and variants on the stage being checked. The set is a suggestion where USD allows other values: **Checked:** setting `subdivisionScheme` to `bogus` succeeded and read back `bogus`, and a pipeline can register its own kinds. A value outside the set is a warning, not an error. `upAxis` and a prim's specifier are the closed sets, where a value outside is an error.
 - **Optional fields are unauthored unless set.** A field of Edit Prim or Configure Layer has three states: unauthored, set, and, for list ops, removed. Unauthored differs from setting the fallback: `active = true` in a stronger layer overrides a weaker layer's `active = false`, while leaving it unauthored lets the weaker opinion through. A Blender `BoolProperty` alone can't hold the three states, so each field has an explicit "author this" toggle or an enum with an unauthored item.
 
 ### Layer from File
@@ -393,10 +394,10 @@ Reads a layer.
 Authors a new layer. A begin node and an end node, paired as in [Node Zones](node-zones.md).
 - **Begin inputs:** File, where Write saves the layer, typed or from a [Substitution Zone](#substitution-zone)'s item; Template (Layer, optional), the layer the zone starts from; Context Hint (Layer, optional), overriding the context derived from the File ([The Zone's Stage](#the-zones-stage)).
 - **Begin outputs:** Editable Layer: empty, or a copy of the Template.
-- **End inputs:** Editable Layer; Default Prim (Prim, optional), the root prim that a reference or payload without a target prim composes.
+- **End inputs:** Editable Layer; Default Prim (Prim, optional), the prim that a reference or payload without a target prim composes: a root prim, or a deeper one, which USD reads from 0.25 and on.
 - **End outputs:** Layer.
 - **Authors:** `defaultPrim`, when given, replacing the Template's.
-- **Reports:** a default prim that isn't a root prim of the layer; a sublayer of its target File that its layer doesn't sublayer, since its context checks against it ([The Zone's Stage](#the-zones-stage)); a file another zone, a Layer from File, or a Substitution Zone's begin also uses; a File that already exists and that the tree hasn't written, as a warning that Write would discard its content. The warning stops once the tree has written the file, by the front end's record of written paths ([Writing](#writing)). To keep the content, the zone writes another file, with the existing one as its Template or under it in its context; editing a file in place waits for the File In-Place Edit Zone ([Scope](#scope)).
+- **Reports:** a default prim that isn't a prim of the layer, `/` included; a default prim that's an `over` or a `class`, as a warning, since a reference composes either but an `over` defines nothing without a sublayer's `def`, and a `class` is abstract; a sublayer of its target File that its layer doesn't sublayer, since its context checks against it ([The Zone's Stage](#the-zones-stage)); a file another zone, a Layer from File, or a Substitution Zone's begin also uses; a File that already exists and that the tree hasn't written, as a warning that Write would discard its content. The warning stops once the tree has written the file, by the front end's record of written paths ([Writing](#writing)). To keep the content, the zone writes another file, with the existing one as its Template or under it in its context; editing a file in place waits for the File In-Place Edit Zone ([Scope](#scope)).
 
 **Templates.** The zone's layer starts as a copy of the Template's prims and layer metadata, and the chain authors on top. The Template is an input like any other, read live and never written, so the tree stays the source of truth and the zone's file is pure output.
 - A Template is a Layer from File, another zone's output, or a Substitution Zone's. This is how the tree duplicates a layer: the duplicate is a new zone, and its File gives it its own save path from the moment it exists, so no two zones write the same content to one file.
@@ -456,14 +457,14 @@ Names one of the tree's stages, which a binding displays ([Stage Outputs and the
 
 ### Viewer
 
-Names the stage the editor's UI shows. A tree may hold several Viewer nodes, but one is active, as in Geometry Nodes; the front end passes only the active one to the cook and strips the rest, as it strips reroutes.
+Names the stage the editor's UI shows. A tree may hold several Viewer nodes, but one is active, as in Geometry Nodes. The front end passes the tree with all of them and tells the cook which one is active, so switching Viewers doesn't change the tree. Only the active one runs: the others compose no stage, warn of none of their links, cause no copies, and keep no stage or copy from an earlier cook, so switching back composes the stage again. An ID that names no Viewer, such as a deleted one's, is a tree warning, and no Viewer is cooked.
 - **Inputs:** Layer or Editable Layer.
 - **Properties:** Context, a checkbox, on by default.
 - **Authors:** nothing.
 - **On a Layer,** its stage has that layer as root, as a Stage Output's does.
-- **On an Editable Layer partway down a chain,** the zone's cook copies its scratch layer into the Viewer's own anonymous layer, with `TransferContent`, as it passes the node the Viewer is linked after, and the Viewer's stage has that copy as root. It's one copy per cook of that zone, about a zone transfer's cost; running the chain a second time up to that node would author everything twice. Nodes after the Viewer's point still run and report.
+- **On an Editable Layer partway down a chain,** the zone's cook copies its scratch layer into the Viewer's own anonymous layer, with `TransferContent`, as it passes the node the Viewer is linked after, and the Viewer's stage has that copy as root. It's at most one copy per cook of that zone, for the active Viewer, about a zone transfer's cost; running the chain a second time up to that node would author everything twice. Nodes after the Viewer's point still run and report.
 - **Context:** when the Viewer's input is a New Layer Zone's Editable Layer or its end's Layer, the stage composes it over the zone's context ([The Zone's Stage](#the-zones-stage)), the stage that zone's nodes check against, so the view matches at every point in the chain and at its end. Off, the stage holds the layer alone. For any other Layer, such as a Layer from File's or a Substitution Zone's, there's no context, and the checkbox does nothing. Toggling it recomposes only the Viewer's stage.
-- **What a change recooks:** linking the Viewer to another point in a chain recooks that zone once, to take the copy there; the zone's own result is unchanged, so its transfer sends no notice downstream. Any other change that reaches only the Viewer recooks no zone.
+- **What a change recooks:** linking the active Viewer to another point in a chain, or making another Viewer active, recooks the zone it's linked into once, to take the copy there; the zone's own result is unchanged, so its transfer sends no notice downstream. Any other change that reaches only the Viewer recooks no zone.
 - **Not composed:** a link into the Viewer doesn't make a zone composed for Write ([Writing](#writing)).
 - **Not converted:** its stage feeds no binding, so it isn't converted between USD's and Blender's axes and units.
 
@@ -474,7 +475,7 @@ The Viewer isn't a zone's member and is never drawn inside one ([What a Zone Hol
 A single prim path.
 - **Properties:** Path, with a search over the prims of the stage where its output is used ([Where a Path Is Searched](#where-a-path-is-searched)).
 - **Outputs:** Prim.
-- **Reports:** a path that isn't absolute, or names a property or variant.
+- **Reports:** a path that is empty, isn't absolute, or names a property or variant. `/` is allowed, as a root prim's parent.
 
 #### Where a path is searched
 
@@ -502,8 +503,8 @@ Authors one new prim spec. Edit Prim edits prims that already exist.
 - **Inputs:** Editable Layer; Parent (Prim, default `/`); Name (String).
 - **Properties:** Specifier (`def`, `over`, `class`); Type, with a search over the schema types the process has registered (`Xform`, `Scope`, `Mesh`, `Sphere`, …), empty for a typeless prim.
 - **Outputs:** Editable Layer; Prim, the new prim's path.
-- **Authors:** the spec, and `over` specs for any ancestors its layer lacks.
-- **Reports:** a name that isn't a valid identifier; a prim this layer already has a spec for, from its Template or an earlier Create Prim. An `over` on a prim a sublayer defines is ordinary and reports nothing.
+- **Authors:** the spec, and `over` specs for any ancestors its layer lacks. An `over` an earlier Create Prim made only for a missing ancestor becomes this node's spec, with its specifier and type, in its place among its siblings, so a chain may create a child before its parent.
+- **Reports:** a name that isn't a valid identifier; a prim this layer already has a spec for, from its Template or an earlier node, an `over` a Create Prim authored as its own spec included; a Type that names no registered schema, or an abstract or API schema, as a warning. An `over` on a prim a sublayer defines is ordinary and reports nothing. A Create Prim its chain stops before reports nothing, as it doesn't run.
 
 ### Edit Prim
 
@@ -637,7 +638,7 @@ USD reports only some invalid relocates, so Relocate checks its own Source. **Ch
 ## The cook module
 
 The cook is C++, in a compiled module of its own, apart from the planner. It authors and composes through Sdf and Usd only, with no Hydra and no Blender.
-- **It takes** the tree as a USD layer ([The Tree as Plain Data](#the-tree-as-plain-data)), Blender's arrays as buffers keyed by name, and an optional base directory for `//` paths.
+- **It takes** the tree as a USD layer ([The Tree as Plain Data](#the-tree-as-plain-data)), Blender's arrays as buffers keyed by name, an optional base directory for `//` paths, and the active Viewer's node ID, if any.
 - **It returns,** keyed by node ID, each Stage Output's stage, composed on the layer linked into it, which it also verifies against ([Stage Outputs and the Viewer](#stage-outputs-and-the-viewer)); the active Viewer's stage; and each node's report: its diagnostics and report data, such as Set Transform's stacks.
 - **The Blender-side Python** turns the node tree into that layer, reads Blender's data with `foreach_get`, hands each Stage Output's stage to its binding as a caller-supplied source ([Source Stages](../spec/source-access.md#source-stages)), and synchronizes like any other caller.
 
@@ -664,7 +665,7 @@ What it costs:
 - The planner's [boundary rules](../../packages/proscenium_sync/src/proscenium_sync/planner/AGENTS.md#boundary-rules) apply to the new module: Tf errors and C++ exceptions become Python exceptions, buffers are read-only and typed as Blender's, the GIL is released while waiting, and OpenUSD workarounds are labeled. The planner's small error translation is duplicated at first rather than split into a shared library.
 - The new package gets its contracts in its own `pyproject.toml`'s `[tool.importlinter]`, with their `lint-imports` hook, and its place in the root's contracts between packages ([import rules](../../packages/README.md#import-rules)), its directory READMEs, an `AGENTS.md` beside its C++ like the planner's, and a line in the root AGENTS.md's repository map.
 
-This note holds the design and its decisions; there's no plan file in `docs/plans/` while Phase 3 has no milestone. PROJECT.md records compiled components in DECISIONS.md, so the module gets a row there when it becomes product code.
+This note holds the design and its decisions, and [the cook module's plan](../plans/cook-module.md) builds it, a node or two at a time. PROJECT.md records compiled components in DECISIONS.md, so the module gets a row there when it becomes product code.
 
 ### The tree as plain data
 
@@ -699,7 +700,7 @@ def NodeTree "Tree"
 - **Inputs, outputs, and properties** are `inputs:`, `outputs:`, and `props:` attributes. Layer and Editable Layer sockets are `opaque` attributes, USD's type for an attribute that only carries connections; other inputs have their own types, and an unauthored input reads the definition's default. **Checked:** an `opaque` attribute refused a value with an error, and its connection survived exporting the layer to text and importing it again.
 - **A begin node names its end** with `rel zone:end`, whose one target is the end prim. A relationship targets a prim in the tree itself, so it reads as the tree's own structure, unlike a Prim value, which names a prim in an authored layer.
 - **A Substitution Zone's items** are on its begin, each under a stable identifier from a counter on the begin, as node uids are ([Node Zones](node-zones.md#pairing)), which names its File output on the begin and its input on the end, such as `outputs:item_3:file` and `inputs:item_3:layer`. Its file is a `string` attribute under the same identifier on the begin, the path as composition resolved it. So reordering items, or picking another file for one, keeps its links.
-- **The front end strips reroutes, frames, and inactive Viewers.** The cook sees only the logical graph.
+- **The front end strips reroutes and frames.** The cook sees only the logical graph, with every Viewer; which one is active is an argument to the cook, not part of the tree.
 - **Muting:** `node:mute` is authored only when true. Each node type's definition says what a muted node passes through, such as its Editable Layer, and the cook follows it.
 - **Paths are strings.** Path properties and File, Prim, and Prims values are `string`s, as is any value a node authors as an `asset` or a path, such as Set Attribute's Value with Type `asset`; the node's definition names the type it authors. As `asset` values, USD's dependency tools would list a test tree's paths as its dependencies, and a relative path would anchor to the tree's file; as `SdfPath`s, copying the tree could remap paths that name prims in other layers. A string keeps the path as typed, which Write's mapping needs ([Writing](#writing)).
 - **Heavy data from Blender isn't in the tree.** A node that reads Blender data names its source with a string key and has an `int` serial, which the front end increments when the depsgraph reports that data changed, so a data change is a one-attribute change in the tree. The caller passes the buffers beside the tree, as `foreach_get` filled them, and the cook copies each into a `VtArray` with one `memcpy` only when its serial changed, otherwise keeping the array it has. Tests keep each buffer in a file beside the tree, such as `.npy`. Inline arrays wouldn't be copied, since a shared `VtArray` moves without copying, but they would make the tree large to compare, export, and read, and would tie the data's changes to the graph's.
@@ -708,9 +709,9 @@ def NodeTree "Tree"
 **The `//` base directory.** The cook takes an optional base directory beside the tree, never in it: the front end passes the saved `.blend`'s directory, and tests pass their tmp directory.
 - With no base directory, a `//` path is an error on its node, asking to save the `.blend`.
 - A changed base directory is a change to every node with a `//` path.
-- Any other path goes to USD's resolver as written, so a custom resolver's identifiers work. A path starting with `./` or `../` warns, since it would resolve against the process's working directory.
+- Any other path goes to USD's resolver as written, so a custom resolver's identifiers work. A path starting with `./` or `../` (or `.\` or `..\`) warns, since it would resolve against the process's working directory. A bare relative path doesn't, since it may be such an identifier.
 
-**Node definitions.** Each node type is defined once, in a node definitions file (such as `node_definitions.usda`) shipped in the package, with one `class` prim per node type, named for the type, which is also the type name of that node's prims in a tree. Each holds the type's `node:version`, its `doc`, and its `inputs:`, `outputs:`, and `props:` attributes with their types and defaults. Menus are `allowedTokens`, and `customData` holds what USD's types can't: the socket kind (`Layer`, `EditableLayer`, `File`, `Prim`, `Prims`), multi-input, what a muted node passes through, a zone node's role and partner, and Blender UI hints.
+**Node definitions.** Each node type is defined once, in a node definitions file (such as `node_definitions.usda`) shipped in the package, with one `class` prim per node type, named for the type, which is also the type name of that node's prims in a tree. Each holds the type's `node:version`, its `doc`, and its `inputs:`, `outputs:`, and `props:` attributes with their types and defaults. Menus are `allowedTokens`, and `customData` holds what USD's types can't: the socket kind (`Layer`, `EditableLayer`, `File`, `Prim`, `Prims`), multi-input, what a muted node passes through, a zone node's role and partner (`zone`, `"begin"` or `"end"`, and `zonePartner`, in the class prim's own `customData`), and Blender UI hints.
 - Both sides load it as data through Sdf, and neither registers it with USD. The front end builds its node classes from it when the extension registers. The cook checks trees against it and reads an unauthored value as the definition's default, so a tree authors only what differs.
 - Behavior is in C++ only, and a test checks that each definition has an implementation and the reverse. Front-end behavior the file can't declare, such as Set Attribute's Value socket following its Type, or dynamic menus, is a Python hook on that node type.
 - **Not a registered schema.** The cook reads the tree through Sdf, which never consults USD's schema registry, so a schema's fallbacks wouldn't reach it anyway. Registration is also unreliable: **Checked** with a codeless schema, `Plug.Registry().RegisterPlugins` found its types when it ran before anything used the schema registry, and didn't find them when a stage had been opened first, though registration reported success; an extension enabled mid-session always registers late. The registered definition also returned no `customData`.
@@ -843,4 +844,3 @@ Following "Phase 3 ordering", the cook can be written and tested without `bpy` a
 - **Verification:** whether it runs on every cook or only on request. It looks up only the zone's own edits ([Provenance](#provenance)), but each output stage it looks them up in composes the whole stage.
 - **Coordinate conversion:** whether the editor's Stage Outputs request the binding's conversion on. The spec's default is off, and the editor's choice as a caller changes nothing in the spec.
 - **Rereading layers the tree doesn't own:** when another department updates `anim.usda`, the user rereads it on request ([Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading)). Does the request live on the Layer from File node, for every layer its stage composes, or on each layer?
-- **Errors in a chain:** pass the layer through, as above, or stop the chain?

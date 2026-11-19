@@ -1,0 +1,75 @@
+#usda 1.0
+# The checks every node shares, against its definition, one problem per node (docs/plans/cook-module.md "Node types
+# in C++"). A node with an error doesn't run, so none of them reads a layer or has a stage. TooManyLinks has two links
+# into its one Layer input, from Read and ReadOther, which have no problem.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "NewerVersion"
+    {
+        int node:version = 2
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "MissingVersion"
+    {
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "VersionWrongType"
+    {
+        float node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "MuteWrongType"
+    {
+        int node:version = 1
+        int node:mute = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "UnknownAttribute"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        string props:colour = "red"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "WrongAttributeType"
+    {
+        int node:version = 1
+        asset props:path = @//base.usda@
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "Read"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "ReadOther"
+    {
+        int node:version = 1
+        string props:path = "//other.usda"
+        opaque outputs:layer
+    }
+
+    def StageOutput "TooManyLinks"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = [
+            </Tree/Read.outputs:layer>,
+            </Tree/ReadOther.outputs:layer>,
+        ]
+    }
+}

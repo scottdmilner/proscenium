@@ -1,0 +1,233 @@
+#usda 1.0
+# Chains with Create Prims (docs/phase3/node-tree.md "What a zone holds" and "Diagnostics"). Loose's Editable Layer is
+# unlinked, and LooseNext follows it. Broken's Stray is on a chain that never reaches BrokenEnd. Fork's Split branches
+# to Left and Right, and Left goes on to LeftNext and ForkEnd. Quiet's Hushed is muted, and Newer is muted with an
+# error; Kept authors. Echoes' Echo takes muted Hushed's Prim. Fail's Bad has an invalid Name, and the chain goes on to
+# FailEnd through MuteA and MuteB, both muted. Starved's Hungry takes NoPath's Prim, which names nothing.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def CreatePrim "Loose"
+    {
+        int node:version = 1
+        string inputs:name = "Loose"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "LooseNext"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Loose.outputs:editableLayer>
+        string inputs:name = "Next"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneBegin "Broken"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/BrokenEnd>
+    }
+
+    def CreatePrim "Stray"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Broken.outputs:layer>
+        string inputs:name = "Stray"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "BrokenEnd"
+    {
+        int node:version = 1
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Fork"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/ForkEnd>
+    }
+
+    def CreatePrim "Split"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Fork.outputs:layer>
+        string inputs:name = "Split"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Left"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Split.outputs:editableLayer>
+        string inputs:name = "Left"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Right"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Split.outputs:editableLayer>
+        string inputs:name = "Right"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "LeftNext"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Left.outputs:editableLayer>
+        string inputs:name = "LeftNext"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "ForkEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/LeftNext.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Quiet"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/QuietEnd>
+    }
+
+    def CreatePrim "Hushed"
+    {
+        int node:version = 1
+        bool node:mute = 1
+        opaque inputs:editableLayer.connect = </Tree/Quiet.outputs:layer>
+        string inputs:name = "Hushed"
+        string outputs:prim
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Newer"
+    {
+        int node:version = 2
+        bool node:mute = 1
+        opaque inputs:editableLayer.connect = </Tree/Hushed.outputs:editableLayer>
+        string inputs:name = "Newer"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Kept"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Newer.outputs:editableLayer>
+        string inputs:name = "Kept"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "QuietEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Kept.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "QuietOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/QuietEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Echoes"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/EchoesEnd>
+    }
+
+    def CreatePrim "Echo"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Echoes.outputs:layer>
+        string inputs:parent.connect = </Tree/Hushed.outputs:prim>
+        string inputs:name = "Echo"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "EchoesEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Echo.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Fail"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/FailEnd>
+    }
+
+    def CreatePrim "Bad"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Fail.outputs:layer>
+        string inputs:name = "1st"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "MuteA"
+    {
+        int node:version = 1
+        bool node:mute = 1
+        opaque inputs:editableLayer.connect = </Tree/Bad.outputs:editableLayer>
+        string inputs:name = "A"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "MuteB"
+    {
+        int node:version = 1
+        bool node:mute = 1
+        opaque inputs:editableLayer.connect = </Tree/MuteA.outputs:editableLayer>
+        string inputs:name = "B"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "FailEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/MuteB.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Starved"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/StarvedEnd>
+    }
+
+    def CreatePrim "Hungry"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Starved.outputs:layer>
+        string inputs:parent.connect = </Tree/NoPath.outputs:prim>
+        string inputs:name = "Hungry"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "StarvedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Hungry.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def Prim "NoPath"
+    {
+        int node:version = 1
+        string props:path = ""
+        string outputs:prim
+    }
+}

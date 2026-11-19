@@ -1,0 +1,12 @@
+#usda 1.0
+# A tree of format 2, newer than the cook's format 1: the tree's unknown-tree-format error, and no nodes read.
+
+def NodeTree "Tree"
+{
+    int tree:format = 2
+
+    def SetAttribute "Set_20_Attribute"
+    {
+        int node:version = 1
+    }
+}

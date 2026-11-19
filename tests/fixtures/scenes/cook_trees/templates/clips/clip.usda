@@ -1,0 +1,9 @@
+#usda 1.0
+# The Template's value clip (template.usda): its value shows on a stage only if the clip resolves.
+
+def "Clip"
+{
+    double size.timeSamples = {
+        0: 7,
+    }
+}

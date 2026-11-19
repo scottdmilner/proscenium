@@ -1,0 +1,47 @@
+#usda 1.0
+# Stage Outputs on read layers (docs/phase3/node-tree.md "Stage Output"). Out and Shared are both linked to Read's
+# base.usda, so they share it as their root layer, and neither warns, since it authors both metrics. Bare's root,
+# no_metrics.usda, authors neither, so it warns. Unlinked has nothing linked, so it has no stage and warns.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Read"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def StageOutput "Out"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Read.outputs:layer>
+        bool props:coordinateConversion = 1
+    }
+
+    def StageOutput "Shared"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Read.outputs:layer>
+    }
+
+    def LayerFromFile "ReadBare"
+    {
+        int node:version = 1
+        string props:path = "//no_metrics.usda"
+        opaque outputs:layer
+    }
+
+    def StageOutput "Bare"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/ReadBare.outputs:layer>
+    }
+
+    def StageOutput "Unlinked"
+    {
+        int node:version = 1
+    }
+}

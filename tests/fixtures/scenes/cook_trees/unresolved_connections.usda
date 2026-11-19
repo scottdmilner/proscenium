@@ -1,0 +1,35 @@
+#usda 1.0
+# Connections that resolve to no node's output, each on its own node: to a prim that isn't in the tree (Missing), to
+# a node's attribute that isn't an output (ToInput), and from a property rather than an input (FromProperty). Source
+# has the only real output, and reads base.usda without a problem. A connection that doesn't resolve isn't a link,
+# so Missing and ToInput are unlinked, and FromProperty's props:layer is also an attribute Stage Output doesn't have.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Source"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def StageOutput "Missing"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Absent.outputs:layer>
+    }
+
+    def StageOutput "ToInput"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Missing.inputs:layer>
+    }
+
+    def StageOutput "FromProperty"
+    {
+        int node:version = 1
+        opaque props:layer.connect = </Tree/Source.outputs:layer>
+    }
+}

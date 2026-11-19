@@ -1,0 +1,12 @@
+#usda 1.0
+# The Template's reference (template.usda): its child shows on a stage only if the reference resolves.
+(
+    defaultPrim = "Referenced"
+)
+
+def "Referenced"
+{
+    def "FromReference"
+    {
+    }
+}

@@ -1,0 +1,69 @@
+#usda 1.0
+# Two spellings of one file for New Layer Zones (docs/phase3/node-tree.md "Writing"). Upper and Lower differ only in
+# case, which is one file where the file system ignores case. Linked and Direct name one file through a symlink to a
+# directory, which the test makes: //linked is a symlink to //real.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def NewLayerZoneBegin "Upper"
+    {
+        int node:version = 1
+        string inputs:file = "//Shared.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/UpperEnd>
+    }
+
+    def NewLayerZoneEnd "UpperEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Upper.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Lower"
+    {
+        int node:version = 1
+        string inputs:file = "//shared.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/LowerEnd>
+    }
+
+    def NewLayerZoneEnd "LowerEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Lower.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Linked"
+    {
+        int node:version = 1
+        string inputs:file = "//linked/zone.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/LinkedEnd>
+    }
+
+    def NewLayerZoneEnd "LinkedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Linked.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Direct"
+    {
+        int node:version = 1
+        string inputs:file = "//real/zone.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/DirectEnd>
+    }
+
+    def NewLayerZoneEnd "DirectEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Direct.outputs:layer>
+        opaque outputs:layer
+    }
+}

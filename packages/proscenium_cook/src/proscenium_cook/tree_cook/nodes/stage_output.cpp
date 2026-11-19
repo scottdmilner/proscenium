@@ -1,0 +1,57 @@
+// Stage Output names one of the tree's stages: the stage composed on the layer linked into it, with every payload
+// loaded (docs/phase3/node-tree.md "Stage Output"), and returned again while its root layer stays the same. Its
+// coordinate conversion setting is the front end's: the cook doesn't convert.
+#include <pxr/base/tf/stringUtils.h>
+#include <pxr/base/tf/token.h>
+#include <pxr/usd/sdf/layer.h>
+#include <pxr/usd/sdf/path.h>
+#include <pxr/usd/usdGeom/tokens.h>
+
+#include <string>
+#include <vector>
+
+#include "nodes/composed_stage.h"
+#include "nodes/node_types.h"
+#include "nodes/stage_output_attributes.h"
+
+PXR_NAMESPACE_USING_DIRECTIVE
+
+namespace proscenium {
+namespace {
+
+// Warns when the root layer authors no upAxis or metersPerUnit. Stage metadata comes from the root layer only, so the
+// stage then falls back to Y-up and centimeters, whatever its sublayers author (docs/phase3/node-tree.md "Stage
+// Outputs and the Viewer").
+void ReportMissingMetrics(const TaskContext& context, const SdfLayerHandle& rootLayer) {
+  std::vector<std::string> missing;
+  if (!rootLayer->HasField(SdfPath::AbsoluteRootPath(), UsdGeomTokens->upAxis)) {
+    missing.emplace_back("upAxis, so it's Y-up");
+  }
+  if (!rootLayer->HasField(SdfPath::AbsoluteRootPath(), UsdGeomTokens->metersPerUnit)) {
+    missing.emplace_back("metersPerUnit, so its unit is the centimeter");
+  }
+  if (missing.empty()) return;
+  context.ReportWarning(
+      DiagnosticCode::kMissingStageMetrics,
+      "the stage's root layer \"" + rootLayer->GetIdentifier() + "\" authors no " + TfStringJoin(missing, ", and no "));
+}
+
+}  // namespace
+
+void RunStageOutput(TaskContext& context) {
+  const StageOutputInputs inputs = ReadStageOutputInputs(context.Inputs());
+  const UsdStageRefPtr stage = ComposedStage(context, inputs.layer.layer);
+  if (!stage) {
+    // A link that brings nothing has its warning already, naming the node it comes from.
+    const TfToken layerName(StageOutputInputs::kLayer);
+    if (!context.IsLinked(layerName)) {
+      context.ReportWarning(DiagnosticCode::kUnlinkedInput, "no layer is linked, so there's no stage",
+                            context.AttributePath(layerName));
+    }
+    return;
+  }
+  ReportMissingMetrics(context, inputs.layer.layer);
+  context.SetStageOutput(stage);
+}
+
+}  // namespace proscenium

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import proscenium_cook
 import proscenium_sync
 import proscenium_ui
 
@@ -20,10 +21,11 @@ _EXTENSION_SPEC = importlib.util.find_spec("proscenium")
 assert _EXTENSION_SPEC is not None and _EXTENSION_SPEC.origin is not None
 EXTENSION = Path(_EXTENSION_SPEC.origin).parent
 ROOT = EXTENSION.parents[1]
-SOURCES = (EXTENSION, *(Path(package.__file__).parent for package in (proscenium_sync, proscenium_ui)))
+SOURCES = (EXTENSION, *(Path(package.__file__).parent for package in (proscenium_sync, proscenium_ui, proscenium_cook)))
 PACKAGES = ROOT / "packages"
-# Not sources: Python's caches, and the compiled module the build puts in planner/, which planner/.gitignore ignores.
-SKIPPED = ("__pycache__", "_planner.*.so", "_planner.*.pyd")
+# Not sources: Python's caches, and the compiled modules the build puts in planner/ and tree_cook/, which their
+# .gitignore files ignore.
+SKIPPED = ("__pycache__", "_planner.*.so", "_planner.*.pyd", "_cook.*.so", "_cook.*.pyd")
 
 
 def _directories() -> list[Path]:

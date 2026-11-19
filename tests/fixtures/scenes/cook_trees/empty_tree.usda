@@ -1,0 +1,7 @@
+#usda 1.0
+# An empty tree: a NodeTree of the cook's format with no nodes, which cooks to an empty result with no diagnostics.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+}

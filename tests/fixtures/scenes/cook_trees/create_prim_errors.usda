@@ -1,0 +1,249 @@
+#usda 1.0
+# Create Prim's errors and warnings (docs/phase3/node-tree.md "Create Prim"). Copy's Template, Read's
+# templates/template.usda, has /World, so Again's /World is an error, and After doesn't run. Twice's Second authors
+# First's /X again, and Overs' Outer the /Y that Patch authored as an over on purpose. Names' Digit has a Name that
+# isn't an identifier, which stops the chain, so Unreached, past it, reports nothing, though its Name is empty too; Odd,
+# after it, has a specifier outside its menu, which reading the tree finds. Blank's empty Name and Parentless's empty
+# Parent each start a zone of their own. Typed's Bogus names no registered schema, Abstract an abstract one, and Api an
+# API schema, which only warn.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Read"
+    {
+        int node:version = 1
+        string props:path = "//templates/template.usda"
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Copy"
+    {
+        int node:version = 1
+        opaque inputs:template.connect = </Tree/Read.outputs:layer>
+        opaque outputs:layer
+        rel zone:end = </Tree/CopyEnd>
+    }
+
+    def CreatePrim "Again"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Copy.outputs:layer>
+        string inputs:name = "World"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "After"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Again.outputs:editableLayer>
+        string inputs:name = "After"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "CopyEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/After.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "CopyOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/CopyEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Twice"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/TwiceEnd>
+    }
+
+    def CreatePrim "First"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Twice.outputs:layer>
+        string inputs:name = "X"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Second"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/First.outputs:editableLayer>
+        string inputs:name = "X"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "TwiceEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Second.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Overs"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/OversEnd>
+    }
+
+    def CreatePrim "Patch"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Overs.outputs:layer>
+        string inputs:name = "Y"
+        token props:specifier = "over"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Outer"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Patch.outputs:editableLayer>
+        string inputs:name = "Y"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "OversEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Outer.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Names"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/NamesEnd>
+    }
+
+    def CreatePrim "Digit"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Names.outputs:layer>
+        string inputs:name = "1st"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Unreached"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Digit.outputs:editableLayer>
+        string inputs:name = ""
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Odd"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Unreached.outputs:editableLayer>
+        string inputs:name = "Odd"
+        token props:specifier = "sometimes"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "NamesEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Odd.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Unnamed"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/UnnamedEnd>
+    }
+
+    def CreatePrim "Blank"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Unnamed.outputs:layer>
+        string inputs:name = ""
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "UnnamedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Blank.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Orphan"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/OrphanEnd>
+    }
+
+    def CreatePrim "Parentless"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Orphan.outputs:layer>
+        string inputs:name = "P"
+        string inputs:parent = ""
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "OrphanEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Parentless.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Typed"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/TypedEnd>
+    }
+
+    def CreatePrim "Bogus"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Typed.outputs:layer>
+        string inputs:name = "Bogus"
+        token props:type = "NotAType"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Abstract"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Bogus.outputs:editableLayer>
+        string inputs:name = "Abstract"
+        token props:type = "Gprim"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Api"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Abstract.outputs:editableLayer>
+        string inputs:name = "Api"
+        token props:type = "CollectionAPI"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "TypedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Api.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "TypedOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/TypedEnd.outputs:layer>
+    }
+}

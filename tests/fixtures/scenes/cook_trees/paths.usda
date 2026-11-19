@@ -1,0 +1,57 @@
+#usda 1.0
+# Layer from File's Path (docs/phase3/node-tree.md "The tree as plain data"): Based's // path reads base.usda from the
+# base directory; WorkingDirectory's ./ path warns; Empty names no file; Missing names a file that doesn't exist;
+# Unreadable one that doesn't parse. AsWritten's Path is a placeholder the test replaces with an absolute path, which
+# goes to the resolver as written. Consumer is linked to Missing, so it warns that its link brings nothing.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Based"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "WorkingDirectory"
+    {
+        int node:version = 1
+        string props:path = "./base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "Empty"
+    {
+        int node:version = 1
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "Missing"
+    {
+        int node:version = 1
+        string props:path = "//missing.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "Unreadable"
+    {
+        int node:version = 1
+        string props:path = "//not_a_layer.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "AsWritten"
+    {
+        int node:version = 1
+        string props:path = "replaced by the test"
+        opaque outputs:layer
+    }
+
+    def StageOutput "Consumer"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Missing.outputs:layer>
+    }
+}

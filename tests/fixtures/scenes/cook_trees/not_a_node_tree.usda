@@ -1,0 +1,9 @@
+#usda 1.0
+# A /Tree prim that isn't a NodeTree: the tree's not-a-node-tree error, and its child isn't read as a node.
+
+def Xform "Tree"
+{
+    def Scope "Child"
+    {
+    }
+}

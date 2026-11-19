@@ -1,0 +1,82 @@
+#usda 1.0
+# The note's Template (docs/phase3/node-tree.md "New Layer Zone"): a relative asset path in each place one can live,
+# the payload's a bare prop.usda, and one absolute path. The files beside it are the ones it composes; the test makes
+# the textures it names, so the resolver finds them.
+(
+    customLayerData = {
+        asset notes = @./notes.txt@
+    }
+    defaultPrim = "World"
+    metersPerUnit = 1
+    subLayers = [
+        @./sub.usda@
+    ]
+    upAxis = "Z"
+)
+
+def Xform "World" (
+    assetInfo = {
+        asset identifier = @./world.usda@
+    }
+    customData = {
+        asset source = @../source.blend@
+    }
+)
+{
+    def "Referenced" (
+        prepend references = @./ref.usda@
+    )
+    {
+    }
+
+    def "Payloaded" (
+        prepend payload = @prop.usda@
+    )
+    {
+    }
+
+    def "Looks" (
+        variants = {
+            string look = "red"
+        }
+        prepend variantSets = "look"
+    )
+    {
+        variantSet "look" = {
+            "red" {
+                def "Inner" (
+                    prepend references = @./variants/inner.usda@
+                )
+                {
+                }
+
+            }
+        }
+    }
+
+    def "Shader"
+    {
+        asset inputs:absolute = @/absolute/never.png@
+        asset inputs:animated.timeSamples = {
+            1: @./textures/f1.png@,
+            2: @./textures/f2.png@,
+        }
+        asset inputs:file = @./textures/wood.png@
+        asset[] inputs:files = [@./textures/a.png@, @./textures/b.png@]
+        asset inputs:tiles = @./textures/tile.<UDIM>.png@
+    }
+
+    def "Clipped" (
+        clips = {
+            dictionary default = {
+                double2[] active = [(0, 0)]
+                asset[] assetPaths = [@./clips/clip.usda@]
+                asset manifestAssetPath = @./clips/manifest.usda@
+                string primPath = "/Clip"
+            }
+        }
+    )
+    {
+        double size
+    }
+}

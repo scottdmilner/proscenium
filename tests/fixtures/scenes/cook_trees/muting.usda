@@ -1,0 +1,52 @@
+#usda 1.0
+# Muted nodes (docs/phase3/node-tree.md "The tree as plain data"). Neither type passes anything through when muted:
+# Layer from File has no input, and Stage Output no output. MutedRead is muted, so ReadsMuted, linked to it, gets
+# nothing and warns, naming it. MutedBroken is muted and has an error, which it still reports, and ReadsBroken gets
+# nothing from it either. MutedOut is linked to Read, which reads base.usda, but is muted, so it has no stage.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Read"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "MutedRead"
+    {
+        int node:version = 1
+        bool node:mute = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def StageOutput "ReadsMuted"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/MutedRead.outputs:layer>
+    }
+
+    def LayerFromFile "MutedBroken"
+    {
+        int node:version = 2
+        bool node:mute = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def StageOutput "ReadsBroken"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/MutedBroken.outputs:layer>
+    }
+
+    def StageOutput "MutedOut"
+    {
+        int node:version = 1
+        bool node:mute = 1
+        opaque inputs:layer.connect = </Tree/Read.outputs:layer>
+    }
+}

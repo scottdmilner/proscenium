@@ -1,0 +1,15 @@
+#usda 1.0
+# One Layer from File, Read, reading base.usda with no Stage Output, so only Read's cache keeps the layer open between
+# cooks. The test changes Read's type, then removes it: each time the new or missing node's cache starts empty.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Read"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+}
