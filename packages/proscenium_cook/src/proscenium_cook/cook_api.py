@@ -26,6 +26,16 @@ def _definitions() -> tree_cook.NodeDefinitions:
     return tree_cook.NodeDefinitions(str(NODE_DEFINITIONS_PATH))
 
 
+def link_problem(output_type: str, output_attribute: str, input_type: str, input_attribute: str) -> str | None:
+    """Why the cook rejects a link from one node type's output to another's input, or None when it takes it.
+
+    Attributes are named in full, such as outputs:layer. This is the check the cook gives incompatible-link for, so a
+    front end can mark the link invalid as it's made. Raises ValueError for a type or attribute the definitions don't
+    have.
+    """
+    return _definitions().link_problem(output_type, output_attribute, input_type, input_attribute) or None
+
+
 class TreeCook:
     """The cook of one tree: it holds the tree's stage until it's dropped, and never edits it.
 

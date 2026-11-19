@@ -210,41 +210,6 @@ void CheckAgainstDefinition(const TreeNode& node, CookDiagnostics& diagnostics) 
   }
 }
 
-// Whether a value of type `from` converts to `to` across a link without loss: the same type, or half to float to
-// double, in each vector width, and int to int64 (docs/phase3/node-tree.md "Values and USD types").
-bool ValueConverts(const SdfValueTypeName& from, const SdfValueTypeName& to) {
-  if (from.GetType() == to.GetType()) return true;
-  static const std::vector<std::pair<std::string, std::string>> widenings{
-      {"GfHalf", "float"},    {"GfHalf", "double"},   {"float", "double"},    {"GfVec2h", "GfVec2f"},
-      {"GfVec2h", "GfVec2d"}, {"GfVec2f", "GfVec2d"}, {"GfVec3h", "GfVec3f"}, {"GfVec3h", "GfVec3d"},
-      {"GfVec3f", "GfVec3d"}, {"GfVec4h", "GfVec4f"}, {"GfVec4h", "GfVec4d"}, {"GfVec4f", "GfVec4d"},
-      {"int", "int64_t"},
-  };
-  const std::pair<std::string, std::string> pair{from.GetCPPTypeName(), to.GetCPPTypeName()};
-  return std::find(widenings.begin(), widenings.end(), pair) != widenings.end();
-}
-
-// A socket kind's name with its article, such as "an EditableLayer".
-std::string WithArticle(SocketKind kind) {
-  const std::string name = SocketKindName(kind);
-  return (std::string("AEIOU").find(name.front()) == std::string::npos ? "a " : "an ") + name;
-}
-
-// Why a link from output to input is invalid; empty when it's valid.
-std::string LinkProblem(const AttributeDefinition& output, const AttributeDefinition& input) {
-  if (output.kind != input.kind) {
-    if (output.kind == SocketKind::kPrim && input.kind == SocketKind::kPrims) return {};  // a single-path expression
-    // The Viewer, partway down a chain: it gets a copy of the zone's layer there (docs/phase3/node-tree.md "Viewer").
-    if (output.kind == SocketKind::kEditableLayer && input.takesEditableLayer) return {};
-    return WithArticle(output.kind) + " output can't link to " + WithArticle(input.kind) + " input";
-  }
-  if (input.kind != SocketKind::kValue || input.dynamicType || ValueConverts(output.valueType, input.valueType)) {
-    return {};
-  }
-  return "a " + output.valueType.GetAsToken().GetString() + " output can't link to a " +
-         input.valueType.GetAsToken().GetString() + " input without losing precision; use a Convert node";
-}
-
 // Each node's links, from its inputs' connections, and the problems with them.
 void ReadLinks(std::vector<TreeNode>& nodes, CookDiagnostics& diagnostics) {
   std::unordered_map<SdfPath, std::size_t, SdfPath::Hash> indexByPrim;

@@ -19,6 +19,9 @@ class NodeDefinitions:
 
     def __init__(self, path: str) -> None: ...
     def type_names(self) -> list[str]: ...
+    # Why the cook rejects a link from output_type's output_attribute to input_type's input_attribute (full names, such
+    # as outputs:layer); "" when it takes it. Raises ValueError for a type or attribute the definitions don't have.
+    def link_problem(self, output_type: str, output_attribute: str, input_type: str, input_attribute: str) -> str: ...
 
 class TreeCook:
     """The cook of one tree (tree_cook.h). Raises ValueError for no stage or no definitions."""

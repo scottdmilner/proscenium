@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <pxr/external/boost/python.hpp>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -46,6 +47,26 @@ bp::list TypeNames(const NodeDefinitions& definitions) {
   bp::list names;
   for (const TfToken& name : definitions.TypeNames()) names.append(name.GetString());
   return names;
+}
+
+// The attribute a node type's definition has, for LinkBetween; throws std::invalid_argument for neither.
+const AttributeDefinition& DefinedAttribute(const NodeDefinitions& definitions, const std::string& typeName,
+                                            const std::string& attributeName) {
+  const NodeDefinition* definition = definitions.Find(TfToken(typeName));
+  if (definition == nullptr) throw std::invalid_argument("no node type " + typeName);
+  const AttributeDefinition* attribute = definition->FindAttribute(TfToken(attributeName));
+  if (attribute == nullptr) throw std::invalid_argument(typeName + " has no attribute " + attributeName);
+  return *attribute;
+}
+
+// Why the cook rejects a link from one type's output to another's input (LinkProblem); empty when it takes it.
+std::string LinkBetween(const NodeDefinitions& definitions, const std::string& outputType,
+                        const std::string& outputAttribute, const std::string& inputType,
+                        const std::string& inputAttribute) {
+  return Guarded([&] {
+    return LinkProblem(DefinedAttribute(definitions, outputType, outputAttribute),
+                       DefinedAttribute(definitions, inputType, inputAttribute));
+  });
 }
 
 std::shared_ptr<TreeCook> NewTreeCook(const UsdStageRefPtr& treeStage, const std::string& baseDirectory,
@@ -106,7 +127,9 @@ PXR_BOOST_PYTHON_MODULE(_cook) {
   bp::def("prim_name_from_node_id", &PrimName, (bp::arg("node_id")));
   bp::class_<NodeDefinitions, std::shared_ptr<NodeDefinitions>, bp::noncopyable>("NodeDefinitions", bp::no_init)
       .def("__init__", bp::make_constructor(&LoadNodeDefinitions))
-      .def("type_names", &TypeNames);
+      .def("type_names", &TypeNames)
+      .def("link_problem", &LinkBetween,
+           (bp::arg("output_type"), bp::arg("output_attribute"), bp::arg("input_type"), bp::arg("input_attribute")));
   bp::class_<TreeCook, std::shared_ptr<TreeCook>, bp::noncopyable>("TreeCook", bp::no_init)
       .def("__init__", bp::make_constructor(&NewTreeCook))
       .def("cook", &Cook, (bp::arg("viewer")));

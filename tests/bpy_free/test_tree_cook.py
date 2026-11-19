@@ -87,6 +87,32 @@ def test_node_ids_encode_to_the_notes_prim_names(node_id: str, prim_name: str) -
     assert proscenium_cook.prim_name_from_node_id(node_id) == prim_name
 
 
+@pytest.mark.parametrize(
+    ("output", "input_", "is_taken"),
+    [
+        (("LayerFromFile", "outputs:layer"), ("StageOutput", "inputs:layer"), True),
+        (("LayerFromFile", "outputs:layer"), ("CreatePrim", "inputs:parent"), False),
+        # The Viewer's Layer takes an Editable Layer, partway down a chain; a Stage Output's doesn't.
+        (("NewLayerZoneBegin", "outputs:layer"), ("Viewer", "inputs:layer"), True),
+        (("NewLayerZoneBegin", "outputs:layer"), ("StageOutput", "inputs:layer"), False),
+        (("Prim", "outputs:prim"), ("CreatePrim", "inputs:parent"), True),
+        (("Prim", "outputs:prim"), ("CreatePrim", "inputs:name"), False),  # a Prim isn't a string value
+    ],
+)
+def test_link_problem_follows_the_socket_kinds(
+    output: tuple[str, str], input_: tuple[str, str], is_taken: bool
+) -> None:
+    # The note's sockets (docs/phase3/node-tree.md "Sockets"), the check a front end marks links invalid with.
+    assert (proscenium_cook.link_problem(*output, *input_) is None) == is_taken
+
+
+def test_link_problem_raises_for_what_no_definition_has() -> None:
+    with pytest.raises(ValueError, match="Relay"):
+        proscenium_cook.link_problem("Relay", "outputs:layer", "StageOutput", "inputs:layer")
+    with pytest.raises(ValueError, match="inputs:nothing"):
+        proscenium_cook.link_problem("LayerFromFile", "outputs:layer", "StageOutput", "inputs:nothing")
+
+
 def test_unknown_node_type_is_the_nodes_error(tmp_path: Path) -> None:
     report = _cook(tmp_path, "node_names.usda").node_reports["Set Attribute"]
     (diagnostic,) = report.diagnostics

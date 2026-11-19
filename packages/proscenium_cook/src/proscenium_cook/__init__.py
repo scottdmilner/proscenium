@@ -3,7 +3,7 @@
 Other packages use only the names this module exports.
 """
 
-from .cook_api import NODE_DEFINITIONS_PATH, TreeCook
+from .cook_api import NODE_DEFINITIONS_PATH, TreeCook, link_problem
 from .cook_results import CookResult, DiagnosticCode, NodeDiagnostic, NodeReport, Severity
 from .tree_cook import prim_name_from_node_id, usd_version
 
@@ -15,6 +15,7 @@ __all__ = [
     "NodeReport",
     "Severity",
     "TreeCook",
+    "link_problem",
     "prim_name_from_node_id",
     "usd_version",
 ]
