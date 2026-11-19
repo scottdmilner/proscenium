@@ -137,7 +137,7 @@ def index_texts() -> list[bpy.types.Text]:
     (source-access.md#canonical-candidate). A linked Text's index belongs to its library.
     """
     texts = bpy.data.texts
-    return [text for text in texts if text.library is None and id_property_records.stored(text, INDEX_KEY) is not None]
+    return [text for text in texts if text.library is None and id_property_records.has_stored_value(text, INDEX_KEY)]
 
 
 def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection) -> None:
