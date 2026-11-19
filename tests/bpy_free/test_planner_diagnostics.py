@@ -156,6 +156,25 @@ def test_a_code_the_list_lacks_raises() -> None:
         planning.plan_diagnostics(BINDING, plan)
 
 
+def test_a_problem_lists_its_first_ten_sources(tmp_path: Path) -> None:
+    # Fourteen instanced curves and the fixture's Tangents, which Hydra reports before them: the first ten in source
+    # order are listed, and the other five counted.
+    with evaluation.unsupported_content(tmp_path) as unsupported:
+        stage = unsupported.stage
+        for index in range(14):
+            definition = stage.CreateClassPrim(f"/Definitions/Curve{index:02}")
+            curve = stage.DefinePrim(f"{definition.GetPath()}/Strand", "HermiteCurves")
+            UsdGeom.Boundable(curve).CreateExtentAttr([(0, 0, 0), (1, 1, 1)])
+            instance = stage.DefinePrim(f"/World/I{index:02}")
+            instance.GetReferences().AddInternalReference(definition.GetPath())
+            instance.SetInstanceable(True)
+        diagnostics = planning.plan_diagnostics(BINDING, plan_at(stage, 0.0))
+    for code in (DiagnosticCode.USD_WARNING, DiagnosticCode.UNTRANSLATED_TYPE):  # from capture, and from planning
+        reports = [d for d in diagnostics if d.code is code and "HermiteCurves" in d.message]
+        assert [d.source_path for d in reports] == [*(f"/World/I{i:02}/Strand" for i in range(LISTED)), ""]
+        assert reports[-1].message.endswith("(and 5 more with the same problem, not listed)")
+
+
 def test_point_copies_are_reported_with_the_definition_they_copy(tmp_path: Path) -> None:
     # Each curve is drawn itself and twice by each of two point instancers: one report each, covering five copies.
     with evaluation.unsupported_content(tmp_path) as unsupported:
