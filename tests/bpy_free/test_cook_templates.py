@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from pxr import Sdf, Usd
+from pxr import Ar, Sdf, Usd
 
 import proscenium_cook
 from fixtures.scenes import Scene, copy_scene
@@ -217,7 +217,7 @@ def test_template_that_brings_nothing_stops_the_zone(tmp_path: Path) -> None:
 
 def test_zone_whose_template_is_its_own_file_is_an_error_on_both(tmp_path: Path) -> None:
     result = _tree(tmp_path, "zone_file_readers.usda").cook()
-    own = str(tmp_path / "own.usda")
+    own = Ar.GetResolver().CreateIdentifierForNewAsset(str(tmp_path / "own.usda"))  # with / on Windows too
     for node_id, other, attribute in (("Own", "OwnFile", "inputs:file"), ("OwnFile", "Own", "props:path")):
         (error,) = result.node_reports[node_id].diagnostics
         assert (error.severity, error.code) == (ERROR, DiagnosticCode.SHARED_FILE)

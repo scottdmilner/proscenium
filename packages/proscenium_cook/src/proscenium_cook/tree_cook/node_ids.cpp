@@ -1,12 +1,17 @@
 #include "node_ids.h"
 
+// <cstdint> comes first, kept there against clang-format's sorting, since Blender's OpenUSD unicodeUtils.h names
+// uint32_t without including it, and Linux's standard library doesn't bring it in through the headers before it.
+// clang-format off
+#include <cstdint>
+// clang-format on
+
 #include <pxr/base/tf/unicodeUtils.h>
 #include <pxr/usd/sdf/path.h>
 
 #include <array>
 #include <charconv>
 #include <cstddef>
-#include <cstdint>
 #include <iterator>
 #include <sstream>
 #include <string_view>

@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from pxr import Sdf, Usd
+from pxr import Ar, Sdf, Usd
 
 import proscenium_cook
 from fixtures.scenes import Scene, copy_scene
@@ -113,7 +113,9 @@ def test_two_zones_with_one_file_are_each_an_error_that_stops_the_zone(tmp_path:
         (error,) = result.node_reports[node_id].diagnostics
         assert (error.severity, error.code) == (ERROR, DiagnosticCode.SHARED_FILE)
         assert error.source_path == f"/Tree/{node_id}.inputs:file"
-        assert str(tmp_path / "shared.usda") in error.message and f'"{other}"' in error.message
+        # The file as the resolver identifies a new file, with / on Windows too.
+        shared = Ar.GetResolver().CreateIdentifierForNewAsset(str(tmp_path / "shared.usda"))
+        assert shared in error.message and f'"{other}"' in error.message
         (warning,) = result.node_reports[f"{node_id}End"].diagnostics
         assert (warning.severity, warning.code) == (WARNING, DiagnosticCode.NO_UPSTREAM_VALUE)
         assert f'"{node_id}"' in warning.message

@@ -49,13 +49,14 @@ bool IgnoresCase(const std::string& directory) {
 }
 
 // The key files compare by, the same for each spelling of one file. A relative identifier, such as a Layer from File's
-// ./own.usda or own.usda, is made absolute against the working directory, where the resolver finds it and where a
-// zone's file of that spelling is saved. A file system path's deepest existing directory is then resolved through its
-// symlinks, and on a file system that ignores case the path is folded to lowercase, so //Shared.usda and //shared.usda
-// are one file on macOS's and Windows' defaults. The folding is ASCII only, so two spellings of one file that differ in
+// own.usda, is made absolute against the working directory, where the resolver finds it and where a zone's file of that
+// spelling is saved, and normalized as the resolver's own identifiers are, so on Windows it has forward slashes where
+// TfAbsPath gives backslashes. A file system path's deepest existing directory is then resolved through its symlinks,
+// and on a file system that ignores case the path is folded to lowercase, so //Shared.usda and //shared.usda are one
+// file on macOS's and Windows' defaults. The folding is ASCII only, so two spellings of one file that differ in
 // a non-ASCII letter's case, or in Unicode normalization, still compare apart.
 std::string FileKey(const std::string& written) {
-  std::string identifier = TfIsRelativePath(written) ? TfAbsPath(written) : written;
+  std::string identifier = TfIsRelativePath(written) ? TfNormPath(TfAbsPath(written)) : written;
   std::string directory = TfNormPath(TfGetPathName(identifier));
   while (!TfIsDir(directory, /*resolveSymlinks=*/true)) {
     const std::string parent = TfNormPath(TfGetPathName(directory));
