@@ -154,3 +154,69 @@ def test_a_code_the_list_lacks_raises() -> None:
     plan = cast("planner.Plan", SimpleNamespace(diagnostics=(reported,)))
     with pytest.raises(ValueError, match="no-such-code"):
         planning.plan_diagnostics(BINDING, plan)
+
+
+def test_point_copies_are_reported_with_the_definition_they_copy(tmp_path: Path) -> None:
+    # Each curve is drawn itself and twice by each of two point instancers: one report each, covering five copies.
+    with evaluation.unsupported_content(tmp_path) as unsupported:
+        stage = unsupported.stage
+        subjects = ["/World/CanonicalCurve", "/World/OtherCurve"]
+        for path in subjects:
+            curve = stage.DefinePrim(path, "BasisCurves")
+            UsdGeom.Boundable(curve).CreateExtentAttr([(0, 0, 0), (1, 1, 1)])
+        for name in ("ZCopiesA", "ZCopiesB"):
+            instancer = UsdGeom.PointInstancer.Define(stage, f"/World/{name}")
+            instancer.CreatePrototypesRel().SetTargets(subjects)
+            instancer.CreateProtoIndicesAttr([0, 1, 0, 1])
+            instancer.CreatePositionsAttr([(i * 2, 0, 0) for i in range(4)])
+        chain = planner.SceneIndexChain(stage)
+        try:
+            frozen = chain.capture(0.0)
+        finally:
+            chain.release()
+        diagnostics = planning.plan_diagnostics(BINDING, planner.plan(frozen, SETTINGS, CONTEXT))
+        # The origins are read from the frozen snapshot, not the changed live source.
+        stage.RemovePrim("/World/ZCopiesA")
+        assert planning.plan_diagnostics(BINDING, planner.plan(frozen, SETTINGS, CONTEXT)) == diagnostics
+    expected = {
+        path: 1 for path, placeholder in unsupported.placeholders.items() if placeholder.type_name == "BasisCurves"
+    } | dict.fromkeys(subjects, 5)
+    reports = [d for d in diagnostics if d.code is DiagnosticCode.UNTRANSLATED_TYPE and "BasisCurves" in d.message]
+    assert len(reports) == len(expected), reports
+    assert {d.source_path for d in reports} == expected.keys()
+    for report in reports:
+        count = expected[report.source_path]
+        assert (f"{count} drawn copies" in report.message) if count > 1 else "drawn copies" not in report.message
+
+
+def test_nested_point_copies_of_a_prototype_child_are_reported_with_its_definition(tmp_path: Path) -> None:
+    # The mesh is a child of one instancer's prototype root, and that instancer is itself a prototype of another.
+    with evaluation.transforms(tmp_path) as transforms:
+        stage = transforms.projective_stage
+        mesh = stage.GetPrimAtPath(transforms.projective_mesh_path)
+        UsdGeom.Xformable(mesh.GetParent()).ClearXformOpOrder()
+        UsdGeom.Xformable(mesh).AddTransformOp().Set(transforms.projective_world_matrix)
+        other = stage.DefinePrim("/World/OtherProjective")
+        other.GetReferences().AddInternalReference(mesh.GetPath())
+        subjects = [transforms.projective_mesh_path, str(other.GetPath())]
+        for name in ("ZCopiesA", "ZCopiesB"):
+            instancer = UsdGeom.PointInstancer.Define(stage, f"/World/{name}")
+            instancer.CreatePrototypesRel().SetTargets([str(mesh.GetParent().GetPath()), subjects[1]])
+            instancer.CreateProtoIndicesAttr([0, 1, 0, 1])
+            instancer.CreatePositionsAttr([(i * 2, 0, 0) for i in range(4)])
+        outer = UsdGeom.PointInstancer.Define(stage, "/World/ZOuter")
+        outer.CreatePrototypesRel().SetTargets(["/World/ZCopiesA"])
+        outer.CreateProtoIndicesAttr([0, 0])
+        outer.CreatePositionsAttr([(0, 0, 0), (2, 0, 0)])
+
+        chain = planner.SceneIndexChain(stage)
+        try:
+            frozen = chain.capture(0.0)
+        finally:
+            chain.release()
+    diagnostics = planning.plan_diagnostics(BINDING, planner.plan(frozen, SETTINGS, CONTEXT))
+    reports = [d for d in diagnostics if d.code is DiagnosticCode.PROJECTIVE_TRANSFORM]
+    # The fixture's two native copies are a third, distinct definition.
+    assert {d.source_path for d in reports} == {*subjects, min(transforms.projective_instance_world_matrices)}
+    # Each is drawn itself, twice by each instancer, and twice by each of ZOuter's two copies of ZCopiesA.
+    assert all("9 drawn copies" in d.message for d in reports if d.source_path in subjects)

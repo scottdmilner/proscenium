@@ -152,24 +152,77 @@ SdfPath DrawnCopySourcePath(const PrimRecord& prim, const DrawnCopy& copy) {
                                                                     : copy.MapHydraPathToSource(prim.hydraPath);
 }
 
+// The USD prims a plan's problems are about, shared by captured and planned reports. Each is found only when a problem
+// is reported, so planning without problems pays nothing for it.
+class DiagnosticSubjects {
+ public:
+  // `snapshot` and `table` must outlive the subjects.
+  DiagnosticSubjects(const Snapshot& snapshot, const PrimTable& table) : snapshot_(snapshot), table_(table) {}
+
+  // The USD prim behind `prim` in `copy`, named the same for every copy made of it, resolved once per Hydra prim, since
+  // planning reports a problem per copy: a point prototype's original definition, from the instancer's prototype
+  // targets as tokens, which propagation doesn't reroot; inside instances, its path in its innermost instance root's
+  // USD prototype (/__Prototype_N/...); else its own path, which outside instancing is its USD path. Without either
+  // fact, the Hydra prim stands for it.
+  [[nodiscard]] SdfPath Of(const PrimRecord& prim, const DrawnCopy& copy) {
+    if (!prim.instancedBy && copy.hydraInstanceRoot.IsEmpty()) return prim.hydraPath;
+    const auto [found, added] = subjects_.try_emplace(prim.hydraPath);
+    if (!added) return found->second;
+    if (const SdfPath subject = PointSubjectOf(prim); !subject.IsEmpty()) {
+      found->second = subject;
+      return found->second;
+    }
+    const PrimRecord* root = copy.hydraInstanceRoot.IsEmpty() ? nullptr : table_.Find(copy.hydraInstanceRoot);
+    found->second =
+        !root || root->instancePrototype.IsEmpty()
+            ? prim.hydraPath
+            : SdfPath(root->instancePrototype).AppendPath(prim.hydraPath.MakeRelativePath(copy.hydraNamespaceRoot));
+    return found->second;
+  }
+
+ private:
+  // The original definition of a prim in a point instancer's prototype, or empty for none found.
+  [[nodiscard]] SdfPath PointSubjectOf(const PrimRecord& prim) {
+    if (!prim.instancedBy || prim.instancedBy->instancers.size() != 1 || prim.instancedBy->prototypeRoots.size() != 1)
+      return {};
+    const PrimRecord* instancer = table_.Find(prim.instancedBy->instancers.front());
+    if (!instancer || !instancer->instancer || !instancer->instancer->instanceLocations.empty()) return {};
+    const InstancerRecord& topology = *instancer->instancer;
+    const auto [origins, added] = pointPrototypeOrigins_.try_emplace(instancer->hydraPath);
+    if (added) origins->second = ReadPointPrototypeOrigins(snapshot_, instancer->hydraPath);
+    if (origins->second.size() != topology.prototypes.size()) return {};
+    const SdfPath& root = prim.instancedBy->prototypeRoots.front();
+    const auto found = std::find(topology.prototypes.begin(), topology.prototypes.end(), root);
+    if (found == topology.prototypes.end()) return {};
+    const auto index = static_cast<std::size_t>(found - topology.prototypes.begin());
+    const TfToken& origin = origins->second[index];
+    if (origin.IsEmpty()) return {};
+    return SdfPath(origin).AppendPath(prim.hydraPath.MakeRelativePath(root));
+  }
+
+  const Snapshot& snapshot_;
+  const PrimTable& table_;
+  std::unordered_map<SdfPath, SdfPath, SdfPath::Hash> subjects_;
+  std::unordered_map<SdfPath, VtArray<TfToken>, SdfPath::Hash> pointPrototypeOrigins_;
+};
+
 // Problems repeated across a USD prim's copies, each reported once, a repeated problem aggregated (with the user): at
 // its first copy in source order, across every Hydra prim that copies it, its message counting the copies it covers.
-// The USD prim is found only when a problem is reported, so planning without problems pays nothing for it.
 class DrawnCopyDiagnosticAggregator {
  public:
-  // `table` must outlive the reports.
-  DrawnCopyDiagnosticAggregator(const PrimTable& table, Diagnostics& to) : table_(table), to_(to) {}
+  // `subjects` must outlive the reports.
+  DrawnCopyDiagnosticAggregator(DiagnosticSubjects& subjects, Diagnostics& to) : subjects_(subjects), to_(to) {}
 
   // Reports `diagnostic` about `copies` of `prim`, or adds them to an equal problem's report.
   void Add(Diagnostic diagnostic, const PrimRecord& prim, const std::vector<DrawnCopy>& copies) {
     // Every copy of a Hydra prim copies one USD prim.
-    Report& report = FindOrCreateReport(std::move(diagnostic), UsdPrimOf(prim, copies.front()));
+    Report& report = FindOrCreateReport(std::move(diagnostic), subjects_.Of(prim, copies.front()));
     for (const DrawnCopy& copy : copies) Count(report, DrawnCopySourcePath(prim, copy));
   }
 
   // Reports `diagnostic` about one copy of `prim`, at `source`, or adds it to an equal problem's report.
   void Add(Diagnostic diagnostic, const PrimRecord& prim, const DrawnCopy& copy, const SdfPath& source) {
-    Count(FindOrCreateReport(std::move(diagnostic), UsdPrimOf(prim, copy)), source);
+    Count(FindOrCreateReport(std::move(diagnostic), subjects_.Of(prim, copy)), source);
   }
 
   // Names each report's first copy and counts its copies, which SummarizeRepeatedDiagnostics words into its message.
@@ -188,15 +241,6 @@ class DrawnCopyDiagnosticAggregator {
     std::size_t count = 0;
   };
 
-  // The USD prim behind `prim` in `copy`, named the same for every copy Hydra's instance aggregation makes of it:
-  // inside instances, its path in its innermost instance root's USD prototype (/__Prototype_N/...), else its own
-  // path, which outside instancing is its USD path. Without the prototype fact, the Hydra prim stands for it.
-  [[nodiscard]] SdfPath UsdPrimOf(const PrimRecord& prim, const DrawnCopy& copy) const {
-    const PrimRecord* root = copy.hydraInstanceRoot.IsEmpty() ? nullptr : table_.Find(copy.hydraInstanceRoot);
-    if (!root || root->instancePrototype.IsEmpty()) return prim.hydraPath;
-    return SdfPath(root->instancePrototype).AppendPath(prim.hydraPath.MakeRelativePath(copy.hydraNamespaceRoot));
-  }
-
   Report& FindOrCreateReport(Diagnostic diagnostic, SdfPath usdPrim) {
     const auto [found, added] = reports_.try_emplace({diagnostic.code, diagnostic.message, std::move(usdPrim)});
     if (added) {
@@ -210,7 +254,7 @@ class DrawnCopyDiagnosticAggregator {
     if (report.count++ == 0 || source < report.first) report.first = source;
   }
 
-  const PrimTable& table_;
+  DiagnosticSubjects& subjects_;
   Diagnostics& to_;
   std::map<std::tuple<DiagnosticCode, std::string, SdfPath>, Report> reports_;
 };
@@ -219,8 +263,8 @@ class DrawnCopyDiagnosticAggregator {
 // (DrawnCopyDiagnosticAggregator). One about no prim, or a prim with no copies, names no source, and its message names
 // the Hydra prim, as the bridge's planner does.
 void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, InstanceResolver& instances,
-                          Diagnostics& to) {
-  DrawnCopyDiagnosticAggregator reports(table, to);
+                          DiagnosticSubjects& subjects, Diagnostics& to) {
+  DrawnCopyDiagnosticAggregator reports(subjects, to);
   for (Diagnostic diagnostic : snapshot.diagnostics) {
     const PrimRecord* prim = diagnostic.sourcePath.IsEmpty() ? nullptr : table.Find(diagnostic.sourcePath);
     const std::vector<DrawnCopy>* copies = prim ? &instances.CopiesOf(*prim) : nullptr;
@@ -312,10 +356,11 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
   const std::vector<DrawnGprim> gprims = DrawnGprims(table, instances);
 
   // 2. Diagnostics from before planning: capture's first, then the resolver's, which mapping capture's can add to.
-  AddSourceDiagnostics(snapshot, table, instances, plan->diagnostics);
+  DiagnosticSubjects subjects(snapshot, table);
+  AddSourceDiagnostics(snapshot, table, instances, subjects, plan->diagnostics);
   plan->diagnostics.insert(plan->diagnostics.end(), instances.Diagnostics().begin(), instances.Diagnostics().end());
   // Planning's own problems with a copy, reported once per USD prim.
-  DrawnCopyDiagnosticAggregator planned(table, plan->diagnostics);
+  DrawnCopyDiagnosticAggregator planned(subjects, plan->diagnostics);
   // The matrix taking the stage's units and up axis to the target scene's; the identity with conversion off.
   const GfMatrix4d correction = CoordinateConversionMatrix(snapshot, settings, context);
   plan->copyWorldMatrices.reserve(16 * gprims.size());

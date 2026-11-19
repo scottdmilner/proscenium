@@ -51,6 +51,11 @@ const TfToken& SourceInfoTokens::PointIds() {
   return token;
 }
 
+const TfToken& SourceInfoTokens::PointPrototypeOrigins() {
+  static const TfToken token("pointPrototypeOrigins");
+  return token;
+}
+
 const TfToken& SourceInfoTokens::AuthoredExtent() {
   static const TfToken token("authoredExtent");
   return token;
@@ -77,6 +82,13 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
     values.push_back(HdRetainedTypedSampledDataSource<TfToken>::New(prim.GetTypeName()));
   }
   if (const UsdGeomPointInstancer instancer{prim}) {
+    SdfPathVector prototypes;
+    instancer.GetPrototypesRel().GetForwardedTargets(&prototypes);
+    VtArray<TfToken> origins;
+    origins.reserve(prototypes.size());
+    for (const SdfPath& path : prototypes) origins.push_back(path.GetToken());
+    names.push_back(SourceInfoTokens::PointPrototypeOrigins());
+    values.push_back(HdRetainedTypedSampledDataSource<VtArray<TfToken>>::New(origins));
     if (const UsdAttribute ids = instancer.GetIdsAttr(); ids && ids.HasAuthoredValue()) {
       names.push_back(SourceInfoTokens::PointIds());
       values.push_back(UsdImagingDataSourceAttributeNew(
