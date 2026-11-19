@@ -7,6 +7,9 @@ from pxr import Usd
 def usd_version() -> tuple[int, int, int]: ...
 def diagnostic_codes() -> list[str]: ...
 
+# The tree prim name that stands for a node ID (node_ids.h), which the cook decodes back to the node ID.
+def prim_name_from_node_id(node_id: str) -> str: ...
+
 class NodeDefinitions:
     """Every node type's definition, from a node definitions file (node_definitions.h).
 

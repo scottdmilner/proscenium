@@ -13,6 +13,7 @@
 
 #include "cook_diagnostics.h"
 #include "node_definitions.h"
+#include "node_ids.h"
 #include "python_error_translation.h"
 #include "tree_cook.h"
 
@@ -30,6 +31,11 @@ bp::list DiagnosticCodes() {
   bp::list codes;
   for (const DiagnosticCode code : kDiagnosticCodes) codes.append(std::string(DiagnosticCodeName(code)));
   return codes;
+}
+
+// The tree prim name a node ID maps to (node_ids.h), so the front end writes the names the cook decodes.
+std::string PrimName(const std::string& nodeId) {
+  return Guarded([&] { return PrimNameFromNodeId(nodeId); });
 }
 
 std::shared_ptr<NodeDefinitions> LoadNodeDefinitions(const std::string& path) {
@@ -97,6 +103,7 @@ PXR_BOOST_PYTHON_MODULE(_cook) {
   using namespace proscenium;
   bp::def("usd_version", &UsdVersion);
   bp::def("diagnostic_codes", &DiagnosticCodes);
+  bp::def("prim_name_from_node_id", &PrimName, (bp::arg("node_id")));
   bp::class_<NodeDefinitions, std::shared_ptr<NodeDefinitions>, bp::noncopyable>("NodeDefinitions", bp::no_init)
       .def("__init__", bp::make_constructor(&LoadNodeDefinitions))
       .def("type_names", &TypeNames);

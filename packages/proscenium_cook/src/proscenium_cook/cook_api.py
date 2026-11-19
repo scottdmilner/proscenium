@@ -12,7 +12,8 @@ from .cook_results import CookResult, DiagnosticCode, NodeDiagnostic, NodeReport
 if TYPE_CHECKING:
     from pxr import Usd
 
-DEFINITIONS = Path(__file__).with_name("node_definitions.usda")
+# The node definitions file, which the front end also builds its node types from.
+NODE_DEFINITIONS_PATH = Path(__file__).with_name("node_definitions.usda")
 
 # Compared as strings, so a code DiagnosticCode lacks fails the import too, rather than raising ValueError.
 if frozenset(tree_cook.diagnostic_codes()) != frozenset(code.value for code in DiagnosticCode):
@@ -22,7 +23,7 @@ if frozenset(tree_cook.diagnostic_codes()) != frozenset(code.value for code in D
 @cache
 def _definitions() -> tree_cook.NodeDefinitions:
     """The shipped node definitions, loaded once a process; loading checks them against the node registry."""
-    return tree_cook.NodeDefinitions(str(DEFINITIONS))
+    return tree_cook.NodeDefinitions(str(NODE_DEFINITIONS_PATH))
 
 
 class TreeCook:

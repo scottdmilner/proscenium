@@ -71,6 +71,22 @@ def test_prim_names_decode_to_node_ids(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("node_id", "prim_name"),
+    [
+        ("Set Attribute", "Set_20_Attribute"),
+        ("N.001", "N_2e_001"),
+        ("1st", "_31_st"),
+        ("Größe", "Größe"),
+        ("a😀b", "a_1f600_b"),
+        ("_2e_", "__2e__"),
+    ],
+)
+def test_node_ids_encode_to_the_notes_prim_names(node_id: str, prim_name: str) -> None:
+    # The note's examples (docs/phase3/node-tree.md "The tree as plain data"), which a front end writes the tree with.
+    assert proscenium_cook.prim_name_from_node_id(node_id) == prim_name
+
+
 def test_unknown_node_type_is_the_nodes_error(tmp_path: Path) -> None:
     report = _cook(tmp_path, "node_names.usda").node_reports["Set Attribute"]
     (diagnostic,) = report.diagnostics
