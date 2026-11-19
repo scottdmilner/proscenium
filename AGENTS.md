@@ -18,7 +18,7 @@ Each directory's README says what it holds.
 - [`packages/`](packages/README.md): the workspace's library packages, which the extension's zip bundles as wheels.
   - [`proscenium_sync`](packages/proscenium_sync/src/proscenium_sync/README.md): the synchronizer, with its API and the planner (C++).
   - [`proscenium_ui`](packages/proscenium_ui/src/proscenium_ui/README.md): the widgets.
-  - [`proscenium_cook`](packages/proscenium_cook/src/proscenium_cook/README.md): the cook, which evaluates a node tree into stages (C++). Not in the zip yet.
+  - [`proscenium_cook`](packages/proscenium_cook/src/proscenium_cook/README.md): the cook, which evaluates a node tree into stages (C++).
 - [`tests/`](tests/README.md): the `bpy_free/`, `blender/`, and `isolated/` test layers, their helpers, and the fixtures.
 - [`tools/`](tools/README.md): the build, the checks that pre-commit runs, and the feasibility evidence.
 - [`docs/`](docs/PROJECT.md#documentation-map): the spec, milestones, decisions, plans, and testing docs.

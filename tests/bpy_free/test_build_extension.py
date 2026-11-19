@@ -32,7 +32,6 @@ def test_minimum_outside_locked_minor_fails(tmp_path: Path) -> None:
 
 
 def test_cook_wheel_ships_its_audited_module(tmp_path: Path) -> None:
-    # Not a runtime dependency yet, so the extension's build doesn't make this wheel (docs/plans/cook-module.md).
     wheel = build_wheel("proscenium_cook", tmp_path)
     assert wheel.name.endswith(f"-{wheel_tag()}.whl")
     with zipfile.ZipFile(wheel) as archive:
