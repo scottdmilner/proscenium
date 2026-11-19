@@ -1,0 +1,89 @@
+#usda 1.0
+# New Layer Zones' Templates (docs/phase3/node-tree.md "New Layer Zone"). Copy starts from templates/template.usda,
+# through Source. Again starts from Copy's layer, so its task waits for Copy's, though its ID sorts first. Missing's
+# Template is Absent's, whose file doesn't exist, so Missing's zone stops.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Source"
+    {
+        int node:version = 1
+        string props:path = "//templates/template.usda"
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Copy"
+    {
+        int node:version = 1
+        string inputs:file = "//shots/seq/copy.usda"
+        opaque inputs:template.connect = </Tree/Source.outputs:layer>
+        opaque outputs:layer
+        rel zone:end = </Tree/CopyEnd>
+    }
+
+    def NewLayerZoneEnd "CopyEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Copy.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "CopyOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/CopyEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Again"
+    {
+        int node:version = 1
+        string inputs:file = "//shots/seq/again.usda"
+        opaque inputs:template.connect = </Tree/CopyEnd.outputs:layer>
+        opaque outputs:layer
+        rel zone:end = </Tree/AgainEnd>
+    }
+
+    def NewLayerZoneEnd "AgainEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Again.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "AgainOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/AgainEnd.outputs:layer>
+    }
+
+    def LayerFromFile "Absent"
+    {
+        int node:version = 1
+        string props:path = "//templates/absent.usda"
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Missing"
+    {
+        int node:version = 1
+        string inputs:file = "//missing.usda"
+        opaque inputs:template.connect = </Tree/Absent.outputs:layer>
+        opaque outputs:layer
+        rel zone:end = </Tree/MissingEnd>
+    }
+
+    def NewLayerZoneEnd "MissingEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Missing.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "MissingOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/MissingEnd.outputs:layer>
+    }
+}

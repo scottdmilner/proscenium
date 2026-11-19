@@ -9,6 +9,7 @@
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/layer.h>
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -35,9 +36,10 @@ struct AuthoringRole {
   void (*author)(AuthoringContext& context) = nullptr;
 };
 
-// The file a zone's layer is saved to, and the attribute that names it.
-struct ZoneFile {
-  std::string identifier;  // as USD's resolver identifies a new file; empty for none
+// The file a node saves a layer to or reads one from, and the attribute that names it. No other zone saves to a zone's
+// file, and nothing in the tree reads it (docs/phase3/node-tree.md "Writing").
+struct NodeFile {
+  std::string identifier;  // as USD's resolver identifies it; empty for none
   PXR_NS::TfToken attributeName;
 };
 
@@ -46,7 +48,10 @@ struct ZoneFile {
 // its layer (tree_cook.cpp).
 struct ZoneRole {
   // A begin's: the file Write saves its zone's layer to. A problem with it is the begin's error, which stops its zone.
-  ZoneFile (*file)(const NodeContext& context) = nullptr;
+  NodeFile (*file)(const NodeContext& context) = nullptr;
+  // A begin's: the layer its zone starts as a copy of, or none for an empty start. A null layer is a start whose link
+  // brings nothing, which stops the zone. The machinery makes the copy (layer_copies.h).
+  std::optional<PXR_NS::SdfLayerHandle> (*startsFrom)(const NodeContext& context) = nullptr;
   // An end's: its outputs, given its zone's finished layer.
   ValueOutputs (*outputs)(const PXR_NS::SdfLayerHandle& layer) = nullptr;
 };
@@ -54,6 +59,9 @@ struct ZoneRole {
 // Layer from File, Stage Output, and Viewer: a task of its own, outside any chain.
 struct TaskRole {
   void (*run)(TaskContext& context) = nullptr;
+  // A task's that reads a file: the file it reads, before any task runs, so a zone saving to it is an error first. Its
+  // run reports any problem with the file, so the cook discards what this reports.
+  NodeFile (*file)(const NodeContext& context) = nullptr;
 };
 
 using NodeBehavior = std::variant<ValueRole, AuthoringRole, ZoneRole, TaskRole>;

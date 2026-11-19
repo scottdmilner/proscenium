@@ -12,6 +12,8 @@ tree_cook/node_input_reader.h, and its typed outputs, with the writer that commi
   identifier held bare.
 - An Editable Layer input or output is its context's, so neither struct holds it.
 - An optional property is an AuthoredField, and a dynamically typed input or output a VtValue.
+- A member is named for its attribute, in camel case, with a trailing underscore for a C++ keyword: inputs:template's
+  is template_, named by the constant kTemplate.
 The headers are checked in, formatted with the cook's .clang-format, so a diff shows what changed in an interface and
 the build needs no generation step.
 """
@@ -43,6 +45,16 @@ STANDARD_HEADERS = {"std::string": "<string>", "std::int64_t": "<cstdint>", "std
 PXR_DIRECTORIES = {"Gf": "base/gf", "Sdf": "usd/sdf", "Tf": "base/tf", "Vt": "base/vt"}
 # Types declared in a header of another name.
 PXR_HEADERS = {"SdfLayerHandle": "pxr/usd/sdf/layer.h"}
+# C++20's keywords and alternative tokens, which a member name can't be.
+CPP_KEYWORDS = frozenset(
+    """alignas alignof and and_eq asm auto bitand bitor bool break case catch char char16_t char32_t char8_t class
+    co_await co_return co_yield compl concept const const_cast consteval constexpr constinit continue decltype
+    default delete do double dynamic_cast else enum explicit export extern false float for friend goto if inline
+    int long mutable namespace new noexcept not not_eq nullptr operator or or_eq private protected public
+    register reinterpret_cast requires return short signed sizeof static static_assert static_cast struct switch
+    template this thread_local throw true try typedef typeid typename union unsigned using virtual void volatile
+    wchar_t while xor xor_eq""".split()
+)
 
 
 @dataclass(frozen=True)
@@ -55,8 +67,16 @@ class InputField:
 
     @property
     def member_name(self) -> str:
-        """The attribute's name after its namespace, its later namespaces joined in camel case: layer, itemFile."""
+        """The attribute's name after its namespace, later namespaces joined in camel case: layer, itemFile, template_.
+
+        A C++ keyword takes a trailing underscore.
+        """
         return _member_name(self.attribute_name)
+
+    @property
+    def constant_name(self) -> str:
+        """The struct's constant naming the field's attribute: kPath for props:path, kTemplate for inputs:template."""
+        return _constant_name(self.attribute_name)
 
 
 @dataclass(frozen=True)
@@ -73,13 +93,32 @@ class OutputField:
 
     @property
     def member_name(self) -> str:
-        """The attribute's name after its namespace, its later namespaces joined in camel case: layer, itemFile."""
+        """The attribute's name after its namespace, later namespaces joined in camel case: layer, itemFile, template_.
+
+        A C++ keyword takes a trailing underscore.
+        """
         return _member_name(self.attribute_name)
+
+    @property
+    def constant_name(self) -> str:
+        """The struct's constant naming the field's attribute: kPath for props:path, kTemplate for inputs:template."""
+        return _constant_name(self.attribute_name)
+
+
+def _camel_name(attribute_name: str) -> str:
+    parts = attribute_name.split(":")[1:]
+    return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
 
 
 def _member_name(attribute_name: str) -> str:
-    parts = attribute_name.split(":")[1:]
-    return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
+    # A C++ keyword, such as inputs:template's, takes a trailing underscore.
+    name = _camel_name(attribute_name)
+    return name + "_" if name in CPP_KEYWORDS else name
+
+
+def _constant_name(attribute_name: str) -> str:
+    name = _camel_name(attribute_name)
+    return "k" + name[:1].upper() + name[1:]
 
 
 def header_name(type_name: str) -> str:
@@ -161,11 +200,6 @@ def _check_member_names(type_name: str, fields: list[InputField] | list[OutputFi
         raise SystemExit(f"{type_name}: two attributes of one struct share a member name: {names}")
 
 
-def _name_constant(field: InputField | OutputField) -> str:
-    """The struct's constant naming the field's attribute: kPath for props:path."""
-    return "k" + field.member_name[:1].upper() + field.member_name[1:]
-
-
 def _commit(field: OutputField) -> str:
     """The writer's lines for one output: commit its value, unless it holds nothing."""
     member = f"outputs.{field.member_name}"
@@ -196,7 +230,7 @@ def render_header(prim: Sdf.PrimSpec, definitions_name: str) -> str:
     def members(fields: list[InputField] | list[OutputField]) -> str:
         # Each attribute's name, such as kPath for props:path, for the node's diagnostics and links; then its field.
         names = [
-            f'  static constexpr const char* {_name_constant(field)} = "{field.attribute_name}";' for field in fields
+            f'  static constexpr const char* {field.constant_name} = "{field.attribute_name}";' for field in fields
         ]
         values = [f"  {field.cpp_type} {field.member_name}{{}};" for field in fields]
         return "\n".join([*names, *([""] if names else []), *values])

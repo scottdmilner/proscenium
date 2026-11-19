@@ -1,0 +1,6 @@
+#usda 1.0
+# The Template's sublayer (template.usda): its prim shows on a stage only if the sublayer resolves.
+
+def "FromSublayer"
+{
+}

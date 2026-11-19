@@ -70,6 +70,7 @@ endfunction()
 
 Python_add_library(_cook MODULE WITH_SOABI
   cook_diagnostics.cpp
+  layer_copies.cpp
   node_contexts.cpp
   node_definitions.cpp
   node_graph.cpp

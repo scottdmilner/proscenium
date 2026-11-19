@@ -29,6 +29,18 @@ std::string ErrorText(const TfErrorMark& mark) {
 
 }  // namespace
 
+NodeFile LayerFromFileFile(const NodeContext& context) {
+  const LayerFromFileInputs inputs = ReadLayerFromFileInputs(context.Inputs());
+  const TfToken pathName(LayerFromFileInputs::kPath);
+  NodeFile file{{}, pathName};
+  if (inputs.path.empty()) return file;
+  // Identified as SdfLayer::FindOrOpen identifies the file it opens.
+  if (const std::optional<std::string> path = context.ExpandPath(inputs.path, pathName)) {
+    file.identifier = ArGetResolver().CreateIdentifier(*path);
+  }
+  return file;
+}
+
 void RunLayerFromFile(TaskContext& context) {
   const LayerFromFileInputs inputs = ReadLayerFromFileInputs(context.Inputs());
   const TfToken pathName(LayerFromFileInputs::kPath);

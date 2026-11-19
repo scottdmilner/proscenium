@@ -27,6 +27,7 @@ EXPECTED_INPUTS = {
     "test_sockets_attributes.h": {
         "layer": "LayerInput",
         "sourceLayers": "std::vector<LayerInput>",
+        "template_": "LayerInput",  # a C++ keyword takes a trailing underscore
         "file": "FileInput",
         "prim": "PXR_NS::SdfPath",
         "prims": "PXR_NS::SdfPathExpression",
@@ -105,6 +106,7 @@ def test_structs_name_each_attribute(definitions: Path, tmp_path: Path) -> None:
     header = node_attributes.render(definitions, tmp_path)[tmp_path / "test_sockets_attributes.h"]
     assert 'static constexpr const char* kItemFile = "inputs:item:file";' in header
     assert 'static constexpr const char* kPrims = "outputs:prims";' in header
+    assert 'static constexpr const char* kTemplate = "inputs:template";' in header
 
 
 def test_writer_commits_each_output_as_a_linked_input_reads_it(definitions: Path, tmp_path: Path) -> None:

@@ -1,0 +1,97 @@
+#usda 1.0
+# Zones' files that a Layer from File reads (docs/phase3/node-tree.md "Writing"). Own's Template is OwnFile's, which
+# reads Own's own file, so each has an error, and neither gives anything out. Reader reads Other's file, spelled
+# another way, unlinked. Bare reads relative_zone.usda in the working directory, where RelativeZone's ./ path saves.
+# ReaderA and ReaderB read one file that no zone saves to, which is no error.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "OwnFile"
+    {
+        int node:version = 1
+        string props:path = "//own.usda"
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Own"
+    {
+        int node:version = 1
+        string inputs:file = "//own.usda"
+        opaque inputs:template.connect = </Tree/OwnFile.outputs:layer>
+        opaque outputs:layer
+        rel zone:end = </Tree/OwnEnd>
+    }
+
+    def NewLayerZoneEnd "OwnEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Own.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "OwnOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/OwnEnd.outputs:layer>
+    }
+
+    def LayerFromFile "Reader"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Other"
+    {
+        int node:version = 1
+        string inputs:file = "//sub/../base.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/OtherEnd>
+    }
+
+    def NewLayerZoneEnd "OtherEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Other.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "Bare"
+    {
+        int node:version = 1
+        string props:path = "relative_zone.usda"
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "RelativeZone"
+    {
+        int node:version = 1
+        string inputs:file = "./relative_zone.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/RelativeZoneEnd>
+    }
+
+    def NewLayerZoneEnd "RelativeZoneEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/RelativeZone.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "ReaderA"
+    {
+        int node:version = 1
+        string props:path = "//other.usda"
+        opaque outputs:layer
+    }
+
+    def LayerFromFile "ReaderB"
+    {
+        int node:version = 1
+        string props:path = "//other.usda"
+        opaque outputs:layer
+    }
+}

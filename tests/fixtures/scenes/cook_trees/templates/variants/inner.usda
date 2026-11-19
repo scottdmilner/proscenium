@@ -1,0 +1,13 @@
+#usda 1.0
+# The reference inside the Template's variant (template.usda): its child shows on a stage only if the reference
+# resolves.
+(
+    defaultPrim = "Inner"
+)
+
+def "Inner"
+{
+    def "FromVariant"
+    {
+    }
+}

@@ -1,0 +1,7 @@
+#usda 1.0
+# The manifest of the Template's value clip (template.usda): the attributes the clip holds values for.
+
+def "Clip"
+{
+    double size
+}

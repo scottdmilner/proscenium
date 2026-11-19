@@ -75,7 +75,7 @@ class "NewLayerZoneBegin" (
         string zonePartner = "NewLayerZoneEnd"
     }
     doc = """Begins a New Layer Zone: a new layer, authored by the zone's chain, which Write saves to File. Its
-    Editable Layer starts empty."""
+    Editable Layer starts as a copy of Template, or empty."""
 )
 {
     int node:version = 1
@@ -84,6 +84,13 @@ class "NewLayerZoneBegin" (
             string socket = "File"
         }
         doc = "Where Write saves the zone's layer, `//` relative to the .blend."
+    )
+    opaque inputs:template (
+        customData = {
+            string socket = "Layer"
+        }
+        doc = """The layer the zone starts from, read live and never written: its prims and layer metadata, with its
+        relative asset paths anchored to its file. Unlinked, the zone starts empty."""
     )
     opaque outputs:layer (
         customData = {

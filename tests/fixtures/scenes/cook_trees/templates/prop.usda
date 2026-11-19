@@ -1,0 +1,13 @@
+#usda 1.0
+# The Template's payload, named as a bare prop.usda (template.usda): its child shows on a stage only if the payload
+# resolves, which a bare path does beside the Template.
+(
+    defaultPrim = "Prop"
+)
+
+def "Prop"
+{
+    def "FromPayload"
+    {
+    }
+}

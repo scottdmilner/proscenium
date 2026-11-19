@@ -1,8 +1,8 @@
 #usda 1.0
 # Test-only node definitions, for tools/node_attributes.py's tests: TestSockets has an input and an output of each
-# socket kind, TestValues a property of each value-type family the note lists (with a role, an array, and a menu), an
-# optional property, and a value and a dynamically typed input and output, and TestNoInputs no input and one output.
-# No implementation registers these types, so the cook's loader refuses them
+# socket kind (and one named for a C++ keyword), TestValues a property of each value-type family the note lists (with a
+# role, an array, and a menu), an optional property, and a value and a dynamically typed input and output, and
+# TestNoInputs no input and one output. No implementation registers these types, so the cook's loader refuses them
 # (tests/bpy_free/test_cook_node_definitions.py).
 
 class "TestSockets" (
@@ -25,6 +25,12 @@ class "TestSockets" (
             bool multiInput = 1
             string socket = "Layer"
         }
+    )
+    opaque inputs:template (
+        customData = {
+            string socket = "Layer"
+        }
+        doc = "A C++ keyword's name."
     )
     string inputs:file (
         customData = {

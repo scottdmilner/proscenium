@@ -12,13 +12,16 @@ namespace proscenium {
 
 struct NewLayerZoneBeginInputs {
   static constexpr const char* kFile = "inputs:file";
+  static constexpr const char* kTemplate = "inputs:template";
 
   FileInput file{};
+  LayerInput template_{};
 };
 
 inline NewLayerZoneBeginInputs ReadNewLayerZoneBeginInputs(const NodeInputReader& reader) {
   NewLayerZoneBeginInputs inputs;
   inputs.file = reader.File("inputs:file");
+  inputs.template_ = reader.Layer("inputs:template");
   return inputs;
 }
 
