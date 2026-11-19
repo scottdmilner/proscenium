@@ -138,9 +138,8 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
     }
     HarvestErrors(mark, SdfPath(), chain);
   }
-  SceneIndexNotices notices = recorder_.Take();
-  if (std::exchange(dropNextCaptureNotices_, false)) notices.clear();
-  const NoticedPrims noticed(notices);
+  NoticedPrims noticed = recorder_.Take();
+  if (std::exchange(dropNextCaptureNotices_, false)) noticed = {};
   // One parallel pass, as the bridge's capture copies: Hydra's reads are threadsafe, and nothing changes the chain
   // until the pass ends. Each prim's read opens its own mark, so an error is the prim's, and the collector attributes
   // the thread's warnings to it; one posted on a thread Hydra hands part of a read to names that thread's prim, or

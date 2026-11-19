@@ -8,49 +8,30 @@ namespace proscenium {
 
 void NoticeRecorder::PrimsAdded(const HdSceneIndexBase&, const AddedPrimEntries& entries) {
   const std::scoped_lock lock(mutex_);
-  for (const auto& entry : entries) notices_.push_back({SceneIndexNoticeKind::Added, entry.primPath, {}, {}});
+  for (const auto& entry : entries) noticed_.exact_.insert(entry.primPath);
 }
 
 void NoticeRecorder::PrimsRemoved(const HdSceneIndexBase&, const RemovedPrimEntries& entries) {
   const std::scoped_lock lock(mutex_);
-  for (const auto& entry : entries) notices_.push_back({SceneIndexNoticeKind::Removed, entry.primPath, {}, {}});
+  for (const auto& entry : entries) noticed_.subtreeRoots_.insert(entry.primPath);
 }
 
 void NoticeRecorder::PrimsDirtied(const HdSceneIndexBase&, const DirtiedPrimEntries& entries) {
   const std::scoped_lock lock(mutex_);
-  for (const auto& entry : entries)
-    notices_.push_back({SceneIndexNoticeKind::Dirtied, entry.primPath, {}, entry.dirtyLocators});
+  for (const auto& entry : entries) noticed_.exact_.insert(entry.primPath);
 }
 
 void NoticeRecorder::PrimsRenamed(const HdSceneIndexBase&, const RenamedPrimEntries& entries) {
   const std::scoped_lock lock(mutex_);
-  for (const auto& entry : entries)
-    notices_.push_back({SceneIndexNoticeKind::Renamed, entry.newPrimPath, entry.oldPrimPath, {}});
-}
-
-SceneIndexNotices NoticeRecorder::Take() {
-  const std::scoped_lock lock(mutex_);
-  SceneIndexNotices taken;
-  taken.swap(notices_);
-  return taken;
-}
-
-NoticedPrims::NoticedPrims(const SceneIndexNotices& notices) {
-  for (const SceneIndexNotice& notice : notices) {
-    switch (notice.kind) {
-      case SceneIndexNoticeKind::Added:
-      case SceneIndexNoticeKind::Dirtied:
-        exact_.insert(notice.primPath);
-        break;
-      case SceneIndexNoticeKind::Removed:
-        subtreeRoots_.insert(notice.primPath);
-        break;
-      case SceneIndexNoticeKind::Renamed:
-        subtreeRoots_.insert(notice.oldPrimPath);
-        subtreeRoots_.insert(notice.primPath);
-        break;
-    }
+  for (const auto& entry : entries) {
+    noticed_.subtreeRoots_.insert(entry.oldPrimPath);
+    noticed_.subtreeRoots_.insert(entry.newPrimPath);
   }
+}
+
+NoticedPrims NoticeRecorder::Take() {
+  const std::scoped_lock lock(mutex_);
+  return std::exchange(noticed_, {});
 }
 
 bool NoticedPrims::Contains(const SdfPath& primPath) const {
