@@ -2,7 +2,7 @@
 # Viewers partway down a chain (docs/phase3/node-tree.md "Viewer"). Zone's chain authors A, then muted Muted, then B.
 # AtBegin views the begin's Editable Layer, AtA A's, AtMuted muted Muted's, which is A's, and AtEnd the end's Layer.
 # NotViewer, a Stage Output, can't take an Editable Layer. Stops' Fine authors, then Fails has an invalid Name, so
-# AtFine views Fine's copy, and AtFails gets nothing.
+# AtFine views Fine's copy, and AtFails gets nothing. Each cook names one Viewer as active.
 
 def NodeTree "Tree"
 {

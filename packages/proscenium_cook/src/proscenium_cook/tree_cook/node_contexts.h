@@ -43,6 +43,9 @@ class NodeCache {
     return std::any_cast<T&>(entry);
   }
 
+  // Drops the entry at key, if any, and what it holds.
+  void Erase(const std::string& key) { entries_.erase(key); }
+
  private:
   std::unordered_map<std::string, std::any> entries_;
 };
@@ -157,19 +160,20 @@ class AuthoringContext final : public NodeContext {
   EditTable& edits_;
 };
 
-// The stages a cook returns, each keyed by node ID.
+// The Stage Outputs' stages a cook returns, each keyed by node ID.
 using StagesByNode = std::map<std::string, PXR_NS::UsdStageRefPtr>;
 
-// A task of its own: it commits its outputs for the tasks downstream of it, and a Stage Output or Viewer its stage.
+// A task of its own: it commits its outputs for the tasks downstream of it, and a Stage Output or the active Viewer
+// its stage.
 class TaskContext final : public NodeContext {
  public:
   TaskContext(const TreeNode& node, const NodeInputReader& inputs, NodeCache& cache, CookDiagnostics& diagnostics,
               const std::string& baseDirectory, ValueOutputs& outputs, StagesByNode& stageOutputs,
-              StagesByNode& viewerStages)
+              PXR_NS::UsdStageRefPtr& viewerStage)
       : NodeContext(node, inputs, cache, diagnostics, baseDirectory),
         outputs_(outputs),
         stageOutputs_(stageOutputs),
-        viewerStages_(viewerStages) {}
+        viewerStage_(viewerStage) {}
 
   // Commits the node's outputs, as its generated Write<Type>Outputs gives them.
   void SetOutputs(ValueOutputs outputs) const { outputs_ = std::move(outputs); }
@@ -177,13 +181,13 @@ class TaskContext final : public NodeContext {
   // Returns stage as the cook's stage for this Stage Output.
   void SetStageOutput(PXR_NS::UsdStageRefPtr stage) const { stageOutputs_[NodeId()] = std::move(stage); }
 
-  // Returns stage as the cook's stage for this Viewer.
-  void SetViewerStage(PXR_NS::UsdStageRefPtr stage) const { viewerStages_[NodeId()] = std::move(stage); }
+  // Returns stage as the cook's Viewer stage; only the active Viewer runs.
+  void SetViewerStage(PXR_NS::UsdStageRefPtr stage) const { viewerStage_ = std::move(stage); }
 
  private:
   ValueOutputs& outputs_;
   StagesByNode& stageOutputs_;
-  StagesByNode& viewerStages_;
+  PXR_NS::UsdStageRefPtr& viewerStage_;
 };
 
 }  // namespace proscenium

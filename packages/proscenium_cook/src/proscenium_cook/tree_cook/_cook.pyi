@@ -21,6 +21,8 @@ class TreeCook:
     """The cook of one tree (tree_cook.h). Raises ValueError for no stage or no definitions."""
 
     def __init__(self, tree_stage: Usd.Stage, base_directory: str, definitions: NodeDefinitions) -> None: ...
-    # stage_outputs and viewer_stages (node ID to Usd.Stage), node_reports (node ID to (diagnostics, report_data)),
-    # and tree_diagnostics; each diagnostic is (severity, code, message, source_path), source_path "" for none.
-    def cook(self) -> dict[str, Any]: ...
+    # viewer is the active Viewer's node ID, "" for none; one that names no Viewer is a tree warning. Returns
+    # stage_outputs (node ID to Usd.Stage), viewer_stage (a Usd.Stage or None), node_reports (node ID to (diagnostics,
+    # report_data)), and tree_diagnostics; each diagnostic is (severity, code, message, source_path), source_path "" for
+    # none.
+    def cook(self, viewer: str) -> dict[str, Any]: ...

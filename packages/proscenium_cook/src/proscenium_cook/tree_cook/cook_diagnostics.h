@@ -23,6 +23,7 @@ enum class DiagnosticCode : std::uint8_t {
   kUnknownTreeFormat,  // tree:format is missing, isn't an int, or is a format this cook doesn't read
   kCompositionInTree,  // a sublayer or composition arc in the tree's layer
   kInvalidNodeName,    // a node prim's name doesn't decode to a node ID
+  kUnknownViewer,      // the active Viewer the cook is given names no Viewer of the tree
   // A node's:
   kUnknownNodeType,         // a type the definitions don't hold
   kMissingNodeVersion,      // no node:version authored
@@ -65,45 +66,26 @@ enum class DiagnosticCode : std::uint8_t {
 
 // Every code the cook reports, which Python's list must hold.
 inline constexpr std::array kDiagnosticCodes{
-    DiagnosticCode::kMissingTree,
-    DiagnosticCode::kNotANodeTree,
-    DiagnosticCode::kUnknownTreeFormat,
-    DiagnosticCode::kCompositionInTree,
-    DiagnosticCode::kInvalidNodeName,
-    DiagnosticCode::kUnknownNodeType,
-    DiagnosticCode::kMissingNodeVersion,
-    DiagnosticCode::kNewerNodeVersion,
-    DiagnosticCode::kUnknownAttribute,
-    DiagnosticCode::kWrongAttributeType,
-    DiagnosticCode::kInvalidToken,
-    DiagnosticCode::kInvalidPrimPath,
-    DiagnosticCode::kInvalidPrimsExpression,
-    DiagnosticCode::kUnresolvedConnection,
-    DiagnosticCode::kIncompatibleLink,
-    DiagnosticCode::kTooManyLinks,
-    DiagnosticCode::kCycle,
-    DiagnosticCode::kNoUpstreamValue,
-    DiagnosticCode::kUsdError,
-    DiagnosticCode::kUnpairedZone,
-    DiagnosticCode::kChainBranch,
-    DiagnosticCode::kBrokenChain,
-    DiagnosticCode::kMismatchedZone,
-    DiagnosticCode::kUnreachedZoneEnd,
-    DiagnosticCode::kNoChain,
-    DiagnosticCode::kSharedFile,
-    DiagnosticCode::kMissingBaseDirectory,
-    DiagnosticCode::kWorkingDirectoryPath,
-    DiagnosticCode::kMissingPath,
-    DiagnosticCode::kFileNotFound,
-    DiagnosticCode::kUnreadableFile,
-    DiagnosticCode::kUnlinkedInput,
-    DiagnosticCode::kMissingStageMetrics,
-    DiagnosticCode::kInvalidDefaultPrim,
-    DiagnosticCode::kDefaultPrimNotDef,
-    DiagnosticCode::kInvalidPrimName,
-    DiagnosticCode::kExistingPrimSpec,
-    DiagnosticCode::kUnknownPrimType,
-    DiagnosticCode::kNonConcretePrimType,
+    DiagnosticCode::kMissingTree,          DiagnosticCode::kNotANodeTree,
+    DiagnosticCode::kUnknownTreeFormat,    DiagnosticCode::kCompositionInTree,
+    DiagnosticCode::kInvalidNodeName,      DiagnosticCode::kUnknownViewer,
+    DiagnosticCode::kUnknownNodeType,      DiagnosticCode::kMissingNodeVersion,
+    DiagnosticCode::kNewerNodeVersion,     DiagnosticCode::kUnknownAttribute,
+    DiagnosticCode::kWrongAttributeType,   DiagnosticCode::kInvalidToken,
+    DiagnosticCode::kInvalidPrimPath,      DiagnosticCode::kInvalidPrimsExpression,
+    DiagnosticCode::kUnresolvedConnection, DiagnosticCode::kIncompatibleLink,
+    DiagnosticCode::kTooManyLinks,         DiagnosticCode::kCycle,
+    DiagnosticCode::kNoUpstreamValue,      DiagnosticCode::kUsdError,
+    DiagnosticCode::kUnpairedZone,         DiagnosticCode::kChainBranch,
+    DiagnosticCode::kBrokenChain,          DiagnosticCode::kMismatchedZone,
+    DiagnosticCode::kUnreachedZoneEnd,     DiagnosticCode::kNoChain,
+    DiagnosticCode::kSharedFile,           DiagnosticCode::kMissingBaseDirectory,
+    DiagnosticCode::kWorkingDirectoryPath, DiagnosticCode::kMissingPath,
+    DiagnosticCode::kFileNotFound,         DiagnosticCode::kUnreadableFile,
+    DiagnosticCode::kUnlinkedInput,        DiagnosticCode::kMissingStageMetrics,
+    DiagnosticCode::kInvalidDefaultPrim,   DiagnosticCode::kDefaultPrimNotDef,
+    DiagnosticCode::kInvalidPrimName,      DiagnosticCode::kExistingPrimSpec,
+    DiagnosticCode::kUnknownPrimType,      DiagnosticCode::kNonConcretePrimType,
 };
 
 // The code's name in Python's list, such as "unknown-node-type".

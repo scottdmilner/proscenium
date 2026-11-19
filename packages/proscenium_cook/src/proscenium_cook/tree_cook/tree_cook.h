@@ -25,10 +25,10 @@ struct NodeReport {
   PXR_NS::VtDictionary reportData;
 };
 
-// One cook's results, each keyed by node ID.
+// One cook's results, each but the Viewer's stage keyed by node ID.
 struct CookResult {
   std::map<std::string, PXR_NS::UsdStageRefPtr> stageOutputs;
-  std::map<std::string, PXR_NS::UsdStageRefPtr> viewerStages;
+  PXR_NS::UsdStageRefPtr viewerStage;             // the active Viewer's; null for none
   std::map<std::string, NodeReport> nodeReports;  // only nodes with diagnostics or report data
   std::vector<NodeDiagnostic> treeDiagnostics;
 };
@@ -39,8 +39,11 @@ class TreeCook {
   TreeCook(PXR_NS::UsdStageRefPtr treeStage, std::string baseDirectory,
            std::shared_ptr<const NodeDefinitions> definitions);
 
-  // Cooks the whole tree. Problems in the tree are diagnostics in the result, never exceptions.
-  CookResult Cook();
+  // Cooks the whole tree. Problems in the tree are diagnostics in the result, never exceptions. activeViewer is the
+  // node ID of the one Viewer to cook, as the editor shows one at a time, or empty for none: the tree's other Viewers
+  // don't run, make no copies of a chain's layer, and keep no stage from an earlier cook. An ID that names no Viewer of
+  // the tree, such as one the editor sends after the Viewer is deleted, is a tree warning, and no Viewer is cooked.
+  CookResult Cook(const std::string& activeViewer = {});
 
  private:
   PXR_NS::UsdStageRefPtr treeStage_;

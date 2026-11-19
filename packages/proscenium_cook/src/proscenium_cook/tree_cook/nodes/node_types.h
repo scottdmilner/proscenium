@@ -30,4 +30,7 @@ ValueOutputs CreatePrimPath(const ValueInputs& context);
 void RunStageOutput(TaskContext& context);  // stage_output.cpp
 void RunViewer(TaskContext& context);       // viewer.cpp
 
+// The Viewer's type name: the cook runs only the one Viewer it's told is active (tree_cook.h).
+inline constexpr const char* kViewerType = "Viewer";
+
 }  // namespace proscenium

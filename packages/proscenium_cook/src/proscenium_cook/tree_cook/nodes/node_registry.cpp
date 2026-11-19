@@ -15,7 +15,7 @@ const std::vector<NodeRegistration>& NodeRegistry() {
       {"NewLayerZoneEnd", ZoneRole{nullptr, nullptr, NewLayerZoneFinish, NewLayerZoneOutputs}},
       {"Prim", ValueRole{ComputePrim}},
       {"StageOutput", TaskRole{RunStageOutput, nullptr}},
-      {"Viewer", TaskRole{RunViewer, nullptr}},
+      {kViewerType, TaskRole{RunViewer, nullptr}},
   };
   return registry;
 }

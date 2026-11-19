@@ -1,6 +1,6 @@
 # `packages/proscenium_cook`
 
-The `proscenium_cook` package: the cook, which evaluates a node tree, given as a USD stage, into a stage for each Stage Output and Viewer node, with diagnostics for its nodes ([plan](../../docs/plans/cook-module.md), [Node Tree](../../docs/phase3/node-tree.md)). Its wheel holds the cook's compiled module, so it is built for one platform and Blender minor version. It isn't a runtime dependency yet: the dev group installs it editable, and the extension's zip leaves it out until a front end uses it.
+The `proscenium_cook` package: the cook, which evaluates a node tree, given as a USD stage, into a stage for each Stage Output node and one for the active Viewer, with diagnostics for its nodes ([plan](../../docs/plans/cook-module.md), [Node Tree](../../docs/phase3/node-tree.md)). Its wheel holds the cook's compiled module, so it is built for one platform and Blender minor version. It isn't a runtime dependency yet: the dev group installs it editable, and the extension's zip leaves it out until a front end uses it.
 
 | Path | Holds |
 |---|---|

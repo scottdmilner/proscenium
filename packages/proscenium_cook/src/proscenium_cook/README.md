@@ -1,6 +1,6 @@
 # `proscenium_cook`
 
-The cook: it reads one node tree from a USD stage and evaluates it, node by node, into a stage for each Stage Output and Viewer node, with diagnostics for its nodes ([plan](../../../../docs/plans/cook-module.md)). All of it is C++, in `tree_cook/`, and bpy-free: it reads and writes USD only.
+The cook: it reads one node tree from a USD stage and evaluates it, node by node, into a stage for each Stage Output node and one for the active Viewer, with diagnostics for its nodes ([plan](../../../../docs/plans/cook-module.md)). All of it is C++, in `tree_cook/`, and bpy-free: it reads and writes USD only.
 
 | Path | Holds |
 |---|---|

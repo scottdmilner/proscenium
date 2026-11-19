@@ -23,6 +23,7 @@
 #include "layer_copies.h"
 #include "node_graph.h"
 #include "node_ids.h"
+#include "nodes/node_types.h"
 #include "task_graph.h"
 #include "tree_reading.h"
 #include "zone_chains.h"
@@ -85,8 +86,10 @@ void ReportTfErrors(const TfErrorMark& mark, const TreeNode& node, CookDiagnosti
 // One cook as it runs: the tree, its graph and zones, each node's committed outputs, and what the cook returns.
 class CookPass {
  public:
+  // activeViewer is the index of the one Viewer that runs; nothing for none.
   CookPass(const TreeNodes& tree, const NodeGraph& graph, const std::vector<Zone>& zones,
-           const std::string& baseDirectory, Caches& caches, CookDiagnostics& diagnostics, CookResult& result)
+           const std::string& baseDirectory, Caches& caches, CookDiagnostics& diagnostics, CookResult& result,
+           std::optional<std::size_t> activeViewer)
       : tree_(tree),
         graph_(graph),
         zones_(zones),
@@ -99,12 +102,14 @@ class CookPass {
           const auto found = outputs_[ref.node].find(ref.attributeName);
           return found == outputs_[ref.node].end() ? VtValue() : found->second;
         }),
+        activeViewer_(activeViewer),
         onChain_(tree.nodes.size(), false),
         viewed_(tree.nodes.size(), false) {
     for (const Zone& zone : zones_) {
       for (const std::size_t node : zone.chain) onChain_[node] = true;
     }
     FindViewedNodes();
+    DropUnviewed();
   }
 
   // The value nodes, and the value outputs of each chain node on a chain, each computed once, in the node graph's
@@ -221,9 +226,11 @@ class CookPass {
     const std::size_t index = task.nodes.front();
     const TreeNode& node = tree_.nodes[index];
     if (!node.runnable || node.muted || diagnostics_.HasError(node.id)) return;
+    // A Viewer other than the active one doesn't run, so it composes no stage and warns of none of its links.
+    if (node.typeName == kViewerType && index != activeViewer_) return;
     Run(index, [&](const TreeInputReader& inputs) {
       TaskContext context(node, inputs, CacheOf(index), diagnostics_, baseDirectory_, outputs_[index],
-                          result_.stageOutputs, result_.viewerStages);
+                          result_.stageOutputs, result_.viewerStage);
       std::get<TaskRole>(node.registration->behavior).run(context);
     });
   }
@@ -277,29 +284,44 @@ class CookPass {
     return broughtNothing.empty();
   }
 
-  // Marks each begin or chain node whose Editable Layer a Viewer is linked to, partway down its chain: a link from it
-  // into an input that isn't a chain's, traced back through muted nodes, which pass their Editable Layer through.
+  // Marks the begin or chain node whose Editable Layer the active Viewer is linked to, partway down its chain: a link
+  // from it into an input that isn't a chain's, traced back through muted nodes, which pass their Editable Layer
+  // through. No other Viewer runs, so no other node is copied for one.
   void FindViewedNodes() {
-    for (const TreeNode& node : tree_.nodes) {
-      if (node.definition == nullptr) continue;  // a node of unknown type, which has its error
-      for (const auto& [input, links] : node.links) {
-        const AttributeDefinition* attribute = node.definition->FindAttribute(input);
-        if (attribute == nullptr || attribute->kind == SocketKind::kEditableLayer) continue;
-        for (const NodeLink& link : links) {
-          for (const OutputRef& origin : graph_.LinkOrigins(link)) {
-            const TreeNode& source = tree_.nodes[origin.node];
-            const AttributeDefinition* output =
-                source.definition != nullptr ? source.definition->EditableLayer(AttributeRole::kOutput) : nullptr;
-            if (output != nullptr && output->attributeName == origin.attributeName) viewed_[origin.node] = true;
-          }
+    if (!activeViewer_) return;
+    const TreeNode& viewer = tree_.nodes[*activeViewer_];
+    // A Viewer that won't run, as RunTask decides, needs no copy.
+    if (!viewer.runnable || viewer.muted || diagnostics_.HasError(viewer.id)) return;
+    viewerRuns_ = true;
+    for (const auto& [input, links] : viewer.links) {
+      // Only an input that takes an Editable Layer views a chain; a link on any other has its own error.
+      const AttributeDefinition* attribute = viewer.definition->FindAttribute(input);
+      if (attribute == nullptr || !attribute->takesEditableLayer) continue;
+      for (const NodeLink& link : links) {
+        for (const OutputRef& origin : graph_.LinkOrigins(link)) {
+          const TreeNode& source = tree_.nodes[origin.node];
+          const AttributeDefinition* output =
+              source.definition != nullptr ? source.definition->EditableLayer(AttributeRole::kOutput) : nullptr;
+          if (output != nullptr && output->attributeName == origin.attributeName) viewed_[origin.node] = true;
         }
       }
     }
   }
 
-  // A Viewer's copy of the scratch layer as the chain has left it at the node, which commits it as its Editable Layer
-  // output's value (docs/phase3/node-tree.md "Viewer"). The copy is kept in the node's cache, so a Viewer's stage keeps
-  // composing it across cooks; it's one TransferContent per cook of the zone, for each node a Viewer is linked to.
+  // Drops what only a Viewer that won't be shown holds, so switching Viewers keeps one Viewer's stage alive, not every
+  // Viewer's that was ever active: the cache, with its composed stage, of each Viewer but the active one when it runs,
+  // and the copy kept by each node the active Viewer isn't linked to. Switching back composes the stage again.
+  void DropUnviewed() {
+    for (std::size_t index = 0; index < tree_.nodes.size(); ++index) {
+      const TreeNode& node = tree_.nodes[index];
+      if (node.typeName == kViewerType && !(viewerRuns_ && index == activeViewer_)) CacheOf(index) = NodeCache();
+      if (!viewed_[index]) CacheOf(index).Erase("viewerCopy");
+    }
+  }
+
+  // The active Viewer's copy of the scratch layer as the chain has left it at the node, which commits it as its
+  // Editable Layer output's value (docs/phase3/node-tree.md "Viewer"). The copy is kept in the node's cache, so the
+  // Viewer's stage keeps composing it across cooks; it's at most one TransferContent per cook of the zone.
   void CopyForViewers(std::size_t index, const SdfLayerHandle& scratch) {
     if (!viewed_[index]) return;
     const TreeNode& node = tree_.nodes[index];
@@ -317,7 +339,7 @@ class CookPass {
   // and then the zone gives no layer out: the nodes after it don't run, and its end warns, naming that node.
   //
   // The whole zone cooks inside one SdfChangeBlock, so Sdf processes its changes once, when the block closes: the
-  // chain's authoring into the scratch layer, the Viewers' copies, and the move into the zone's layer, which each
+  // chain's authoring into the scratch layer, the active Viewer's copy, and the move into the zone's layer, which each
   // stage composing a layer then sees as one change. Inside the block the cook calls only Sdf (and UsdUtils' layer
   // pass, which is Sdf's), never a stage or other API downstream of Sdf's notices, as SdfChangeBlock requires: those
   // would see stale layers. A node's value outputs, which may query USD's registries, are computed before any zone's
@@ -502,8 +524,10 @@ class CookPass {
   TreeInputReader::OutputValues valueOf_;
   std::vector<SdfLayerHandle> zoneLayers_;          // by zone index, from MakeZoneLayers
   std::map<std::string, std::size_t> zoneOfLayer_;  // zone index by its layer's identifier
+  std::optional<std::size_t> activeViewer_;         // the index of the one Viewer that runs
+  bool viewerRuns_ = false;                         // whether the active Viewer runs this cook (FindViewedNodes)
   std::vector<bool> onChain_;                       // by node index: a node on a zone's chain, its end excluded
-  std::vector<bool> viewed_;                        // by node index: a begin or chain node a Viewer is linked to
+  std::vector<bool> viewed_;  // by node index: a begin or chain node the active Viewer is linked to
 };
 
 }  // namespace
@@ -515,9 +539,24 @@ TreeCook::TreeCook(UsdStageRefPtr treeStage, std::string baseDirectory,
   if (!definitions_) throw std::invalid_argument("TreeCook needs the node definitions");
 }
 
-CookResult TreeCook::Cook() {
+CookResult TreeCook::Cook(const std::string& activeViewer) {
   CookDiagnostics diagnostics;
   TreeNodes tree = ReadTree(treeStage_->GetRootLayer(), *definitions_, diagnostics);
+
+  // The active Viewer is one of the tree's Viewers, by node ID. One the tree doesn't hold, such as a Viewer the editor
+  // deleted or retyped since, warns, and the cook goes on with none, so the Stage Outputs still get their stages. A
+  // tree the cook can't read holds no nodes, so it names no Viewer either.
+  std::optional<std::size_t> viewer;
+  if (!activeViewer.empty()) {
+    for (std::size_t index = 0; index < tree.nodes.size(); ++index) {
+      if (tree.nodes[index].id == activeViewer && tree.nodes[index].typeName == kViewerType) viewer = index;
+    }
+    if (!viewer) {
+      diagnostics.AddTree(
+          Severity::kWarning, DiagnosticCode::kUnknownViewer,
+          "the active Viewer \"" + activeViewer + "\" is no Viewer of the tree, so no Viewer is cooked");
+    }
+  }
   const NodeGraph graph(tree, diagnostics);
   const std::vector<Zone> zones = FindZones(tree, diagnostics);
   const std::vector<Task> tasks = OrderTasks(tree, graph, zones, diagnostics);
@@ -532,7 +571,7 @@ CookResult TreeCook::Cook() {
   // The scheduler: the value nodes first, then every task, serially, upstream first, so each reads its upstream
   // tasks' committed results. A muted node doesn't run: its consumers read through it (NodeGraph::Sources).
   CookResult result;
-  CookPass pass(tree, graph, zones, baseDirectory_, caches, diagnostics, result);
+  CookPass pass(tree, graph, zones, baseDirectory_, caches, diagnostics, result, viewer);
   pass.ComputeValues();
   pass.MakeZoneLayers();
   pass.CheckFiles();

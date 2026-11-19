@@ -48,8 +48,10 @@ def test_empty_zone_gives_its_stage_output_an_anonymous_layer(tmp_path: Path) ->
 
 
 def test_stage_output_and_viewer_share_the_zones_layer(tmp_path: Path) -> None:
-    result = _cook(tmp_path, "new_layer_zones.usda")
-    assert result.viewer_stages["View"].GetRootLayer() == result.stage_outputs["Out"].GetRootLayer()
+    cook = proscenium_cook.TreeCook(_open_tree(tmp_path, "new_layer_zones.usda"), base_directory=tmp_path)
+    result = cook.cook("View")
+    assert result.viewer_stage is not None
+    assert result.viewer_stage.GetRootLayer() == result.stage_outputs["Out"].GetRootLayer()
 
 
 def test_zones_are_cooked_into_the_layers_they_keep(tmp_path: Path) -> None:

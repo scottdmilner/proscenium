@@ -43,12 +43,17 @@ class TreeCook:
             tree_stage, "" if base_directory is None else str(base_directory), _definitions()
         )
 
-    def cook(self) -> CookResult:
-        """Cook the whole tree, and return its stages and reports."""
-        raw = self._cook.cook()
+    def cook(self, viewer: str | None = None) -> CookResult:
+        """Cook the whole tree, and return its stages and reports.
+
+        viewer is the node ID of the one Viewer to cook, the one the editor shows, or None for none; the tree's other
+        Viewers don't run. One that names no Viewer of the tree, such as a deleted Viewer's, is a tree warning,
+        unknown-viewer, and the cook goes on with no Viewer.
+        """
+        raw = self._cook.cook("" if viewer is None else viewer)
         return CookResult(
             stage_outputs=dict(raw["stage_outputs"]),
-            viewer_stages=dict(raw["viewer_stages"]),
+            viewer_stage=raw["viewer_stage"],
             node_reports={
                 node_id: NodeReport(_diagnostics(diagnostics), dict(report_data))
                 for node_id, (diagnostics, report_data) in raw["node_reports"].items()

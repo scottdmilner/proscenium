@@ -29,7 +29,7 @@ def _codes(diagnostics: tuple[proscenium_cook.NodeDiagnostic, ...]) -> list[Diag
 
 def test_empty_tree_cooks_to_an_empty_result(tmp_path: Path) -> None:
     result = _cook(tmp_path, "empty_tree.usda")
-    assert result == proscenium_cook.CookResult({}, {}, {}, ())
+    assert result == proscenium_cook.CookResult({}, None, {}, ())
 
 
 @pytest.mark.parametrize(
@@ -46,7 +46,7 @@ def test_unreadable_tree_has_one_tree_error_and_no_nodes(tmp_path: Path, tree: s
     assert _codes(result.tree_diagnostics) == [code]
     assert result.tree_diagnostics[0].severity == Severity.ERROR
     assert result.node_reports == {}  # the nodes of a tree the cook can't read aren't read
-    assert result.stage_outputs == {} and result.viewer_stages == {}
+    assert result.stage_outputs == {} and result.viewer_stage is None
 
 
 def test_sublayer_and_arc_are_tree_errors(tmp_path: Path) -> None:

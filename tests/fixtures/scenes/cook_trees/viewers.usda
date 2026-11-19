@@ -2,7 +2,7 @@
 # Viewers on read layers (docs/phase3/node-tree.md "Viewer"). View and Out are linked to Read's base.usda; ContextOff
 # too, with Context off, which a Layer from File's layer composes the same way. BareView's root, no_metrics.usda,
 # authors no metrics, and a Viewer doesn't warn of it. Unlinked has nothing linked, and FromMissing's link brings
-# nothing, since Missing's file doesn't exist, so neither has a stage.
+# nothing, since Missing's file doesn't exist, so neither has a stage. Each cook names one Viewer as active.
 
 def NodeTree "Tree"
 {

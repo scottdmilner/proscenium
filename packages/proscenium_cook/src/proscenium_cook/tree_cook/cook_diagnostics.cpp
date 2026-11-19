@@ -19,6 +19,8 @@ const char* DiagnosticCodeName(DiagnosticCode code) {
       return "composition-in-tree";
     case DiagnosticCode::kInvalidNodeName:
       return "invalid-node-name";
+    case DiagnosticCode::kUnknownViewer:
+      return "unknown-viewer";
     case DiagnosticCode::kUnknownNodeType:
       return "unknown-node-type";
     case DiagnosticCode::kMissingNodeVersion:

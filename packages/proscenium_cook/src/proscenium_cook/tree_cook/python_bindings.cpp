@@ -60,27 +60,31 @@ bp::list DiagnosticTuples(const std::vector<NodeDiagnostic>& diagnostics) {
   return tuples;
 }
 
-// The stages by node ID, each a Usd.Stage that Python owns. pxr's Python holds a stage by weak pointer, so a stage
-// converted as a plain RefPtr would expire with the result; the factory hands Python ownership, as Usd.Stage.Open's
-// binding does.
+// The stage as a Usd.Stage that Python owns. pxr's Python holds a stage by weak pointer, so a stage converted as a
+// plain RefPtr would expire with the result; the factory hands Python ownership, as Usd.Stage.Open's binding does.
+bp::object OwnedStage(const UsdStageRefPtr& stage) {
+  using Factory = TfPyRefPtrFactory<>::apply<UsdStageRefPtr>::type;
+  return bp::object(bp::handle<>(Factory()(stage)));
+}
+
+// The stages by node ID, each one Python owns (OwnedStage).
 bp::dict Stages(const std::map<std::string, UsdStageRefPtr>& stages) {
-  using OwnedStage = TfPyRefPtrFactory<>::apply<UsdStageRefPtr>::type;
   bp::dict byNode;
-  for (const auto& [nodeId, stage] : stages) byNode[nodeId] = bp::object(bp::handle<>(OwnedStage()(stage)));
+  for (const auto& [nodeId, stage] : stages) byNode[nodeId] = OwnedStage(stage);
   return byNode;
 }
 
-// The result as a dict of stage_outputs, viewer_stages, node_reports (node ID to (diagnostics, report_data)), and
-// tree_diagnostics.
-bp::dict Cook(TreeCook& cook) {
-  const CookResult result = Guarded([&] { return cook.Cook(); });
+// The result, with viewer the active Viewer's node ID ("" for none), as a dict of stage_outputs, viewer_stage (None for
+// none), node_reports (node ID to (diagnostics, report_data)), and tree_diagnostics.
+bp::dict Cook(TreeCook& cook, const std::string& viewer) {
+  const CookResult result = Guarded([&] { return cook.Cook(viewer); });
   bp::dict reports;
   for (const auto& [nodeId, report] : result.nodeReports) {
     reports[nodeId] = bp::make_tuple(DiagnosticTuples(report.diagnostics), report.reportData);
   }
   bp::dict out;
   out["stage_outputs"] = Stages(result.stageOutputs);
-  out["viewer_stages"] = Stages(result.viewerStages);
+  out["viewer_stage"] = result.viewerStage ? OwnedStage(result.viewerStage) : bp::object();
   out["node_reports"] = reports;
   out["tree_diagnostics"] = DiagnosticTuples(result.treeDiagnostics);
   return out;
@@ -98,5 +102,5 @@ PXR_BOOST_PYTHON_MODULE(_cook) {
       .def("type_names", &TypeNames);
   bp::class_<TreeCook, std::shared_ptr<TreeCook>, bp::noncopyable>("TreeCook", bp::no_init)
       .def("__init__", bp::make_constructor(&NewTreeCook))
-      .def("cook", &Cook);
+      .def("cook", &Cook, (bp::arg("viewer")));
 }

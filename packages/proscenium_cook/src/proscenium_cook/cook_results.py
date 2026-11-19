@@ -32,6 +32,7 @@ class DiagnosticCode(StrEnum):
     UNKNOWN_TREE_FORMAT = "unknown-tree-format"  # tree:format missing, not an int, or a format the cook doesn't read
     COMPOSITION_IN_TREE = "composition-in-tree"  # a sublayer or composition arc in the tree's layer
     INVALID_NODE_NAME = "invalid-node-name"  # a node prim's name doesn't decode to a node ID
+    UNKNOWN_VIEWER = "unknown-viewer"  # the active Viewer the cook is given names no Viewer of the tree
     # A node's:
     UNKNOWN_NODE_TYPE = "unknown-node-type"  # a type the definitions don't hold
     MISSING_NODE_VERSION = "missing-node-version"  # no node:version authored
@@ -92,9 +93,9 @@ class NodeReport:
 
 @dataclass(frozen=True)
 class CookResult:
-    """One cook's stages and reports, each keyed by node ID."""
+    """One cook's stages and reports, each but the Viewer's keyed by node ID."""
 
     stage_outputs: dict[str, Usd.Stage]  # one per Stage Output that has a stage
-    viewer_stages: dict[str, Usd.Stage]  # one per Viewer that has a stage
+    viewer_stage: Usd.Stage | None  # the active Viewer's, None when it has none or no Viewer is active
     node_reports: dict[str, NodeReport]  # one per node with diagnostics or report data
     tree_diagnostics: tuple[NodeDiagnostic, ...]  # problems that belong to no node
