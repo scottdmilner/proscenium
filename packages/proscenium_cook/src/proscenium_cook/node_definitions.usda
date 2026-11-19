@@ -15,6 +15,15 @@
     - optional: true for a property that is unauthored unless set, which a node reads as an AuthoredField.
     - dynamicType: true for a value whose type follows another property, which a node reads as a VtValue.
     - mutePassThrough, on an output: the input whose value a muted node passes through it.
+    - takesEditableLayer: true for a Layer input that also takes an Editable Layer link, partway down a chain: the
+      Viewer's.
+    - closedMenu: true for a menu USD takes no other value for, such as a specifier: a token outside it is an error,
+      where another menu's is a warning.
+
+    An authoring node, one outside a zone's begin and end with an Editable Layer input, computes its other outputs from
+    its own inputs and properties alone, never from its zone's stage, so they're computed with the value nodes, before
+    any task runs (docs/plans/cook-module.md "Edges between tasks"). Its implementation's outputs hook gets no stage,
+    and loading checks that it has one exactly when its definition has such outputs.
 
     A Path property is a string, as typed: `//` starts a path relative to the base directory, and any other path goes
     to USD's resolver as written (docs/phase3/node-tree.md "The tree as plain data")."""
@@ -54,13 +63,15 @@ class "StageOutput" (
 
 class "Viewer" (
     doc = """Names the stage the editor's UI shows: the stage composed on its input Layer, with every payload loaded,
-    which feeds no binding and isn't converted."""
+    which feeds no binding and isn't converted. Linked partway down a chain, its Layer is a copy of the zone's layer as
+    the chain has left it there."""
 )
 {
     int node:version = 1
     opaque inputs:layer (
         customData = {
             string socket = "Layer"
+            bool takesEditableLayer = 1
         }
     )
     bool props:context = 1 (
@@ -113,9 +124,77 @@ class "NewLayerZoneEnd" (
             string socket = "EditableLayer"
         }
     )
+    string inputs:defaultPrim = "" (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = """The prim that a reference or payload without a target prim composes, replacing the Template's.
+        Empty, the layer keeps the Template's, and with no Template it has none."""
+    )
     opaque outputs:layer (
         customData = {
             string socket = "Layer"
         }
+    )
+}
+
+class "Prim" (
+    doc = "A single prim path."
+)
+{
+    int node:version = 1
+    string props:path = "" (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = "An absolute prim path, such as /World/Chair."
+    )
+    string outputs:prim (
+        customData = {
+            string socket = "Prim"
+        }
+    )
+}
+
+class "CreatePrim" (
+    doc = """Authors one new prim spec, Parent joined with Name, and an `over` for each ancestor its layer lacks. Edit
+    Prim edits prims that already exist."""
+)
+{
+    int node:version = 1
+    opaque inputs:editableLayer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+    string inputs:parent = "/" (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = "The new prim's parent: / for a root prim."
+    )
+    string inputs:name = "" (
+        doc = "The new prim's name, a valid identifier."
+    )
+    token props:specifier = "def" (
+        allowedTokens = ["def", "over", "class"]
+        customData = {
+            bool closedMenu = 1
+        }
+    )
+    token props:type = "" (
+        doc = "A registered prim type, such as Xform, Scope, or Mesh; empty for a typeless prim."
+    )
+    opaque outputs:editableLayer (
+        customData = {
+            string mutePassThrough = "inputs:editableLayer"
+            string socket = "EditableLayer"
+        }
+    )
+    string outputs:prim (
+        customData = {
+            string socket = "Prim"
+        }
+        doc = "The new prim's path, Parent joined with Name."
     )
 }

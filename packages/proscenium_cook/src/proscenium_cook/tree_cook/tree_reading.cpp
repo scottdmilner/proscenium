@@ -131,16 +131,29 @@ void CheckVersion(const TreeNode& node, CookDiagnostics& diagnostics) {
   }
 }
 
+// Why text isn't a Prim's path: not absolute, or naming a property or a variant; empty when it's an absolute prim path,
+// or the absolute root, which a Create Prim's Parent names for a root prim (docs/phase3/node-tree.md "Prim").
+std::string PrimPathProblem(const std::string& text) {
+  if (!SdfPath::IsValidPathString(text)) return "which isn't a path";
+  const SdfPath path(text);
+  if (!path.IsAbsolutePath()) return "which isn't absolute";
+  if (path.ContainsPrimVariantSelection()) return "which names a variant";
+  if (!path.IsAbsoluteRootOrPrimPath()) return "which isn't a prim's path";
+  return {};
+}
+
 // The shared checks on an authored value, against its attribute's definition.
 void CheckValue(const TreeNode& node, const SdfAttributeSpecHandle& attribute,
                 const AttributeDefinition& attributeDefinition, CookDiagnostics& diagnostics) {
   const VtValue value = attribute->GetDefaultValue();
   if (!attributeDefinition.allowedTokens.empty() && value.IsHolding<TfToken>()) {
     const auto& token = value.UncheckedGet<TfToken>();
+    // A menu is a suggestion where USD takes other values, and a closed menu, such as a specifier, the only values.
     if (std::find(attributeDefinition.allowedTokens.begin(), attributeDefinition.allowedTokens.end(), token) ==
         attributeDefinition.allowedTokens.end()) {
       diagnostics.AddNode(
-          node.id, Severity::kWarning, DiagnosticCode::kInvalidToken,
+          node.id, attributeDefinition.closedMenu ? Severity::kError : Severity::kWarning,
+          DiagnosticCode::kInvalidToken,
           attribute->GetName() + " is \"" + token.GetString() + "\", which isn't one of its menu's items",
           attribute->GetPath());
     }
@@ -159,10 +172,9 @@ void CheckValue(const TreeNode& node, const SdfAttributeSpecHandle& attribute,
   if (attributeDefinition.kind == SocketKind::kPrim && value.IsHolding<std::string>() &&
       !value.UncheckedGet<std::string>().empty()) {
     const auto& text = value.UncheckedGet<std::string>();
-    if (!SdfPath::IsValidPathString(text) || !SdfPath(text).IsAbsolutePath() || !SdfPath(text).IsPrimPath()) {
+    if (const std::string problem = PrimPathProblem(text); !problem.empty()) {
       diagnostics.AddNode(node.id, Severity::kError, DiagnosticCode::kInvalidPrimPath,
-                          attribute->GetName() + " is \"" + text + "\", which isn't an absolute prim path",
-                          attribute->GetPath());
+                          attribute->GetName() + " is \"" + text + "\", " + problem, attribute->GetPath());
     }
   }
 }
@@ -212,12 +224,19 @@ bool ValueConverts(const SdfValueTypeName& from, const SdfValueTypeName& to) {
   return std::find(widenings.begin(), widenings.end(), pair) != widenings.end();
 }
 
+// A socket kind's name with its article, such as "an EditableLayer".
+std::string WithArticle(SocketKind kind) {
+  const std::string name = SocketKindName(kind);
+  return (std::string("AEIOU").find(name.front()) == std::string::npos ? "a " : "an ") + name;
+}
+
 // Why a link from output to input is invalid; empty when it's valid.
 std::string LinkProblem(const AttributeDefinition& output, const AttributeDefinition& input) {
   if (output.kind != input.kind) {
     if (output.kind == SocketKind::kPrim && input.kind == SocketKind::kPrims) return {};  // a single-path expression
-    return std::string("a ") + SocketKindName(output.kind) + " output can't link to a " + SocketKindName(input.kind) +
-           " input";
+    // The Viewer, partway down a chain: it gets a copy of the zone's layer there (docs/phase3/node-tree.md "Viewer").
+    if (output.kind == SocketKind::kEditableLayer && input.takesEditableLayer) return {};
+    return WithArticle(output.kind) + " output can't link to " + WithArticle(input.kind) + " input";
   }
   if (input.kind != SocketKind::kValue || input.dynamicType || ValueConverts(output.valueType, input.valueType)) {
     return {};

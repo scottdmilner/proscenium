@@ -36,6 +36,8 @@ struct AttributeDefinition {
   PXR_NS::VtValue defaultValue;        // empty when the definition authors none
   PXR_NS::VtTokenArray allowedTokens;  // a menu's items; empty for none
   bool multiInput = false;             // takes several links, in connection order
+  bool takesEditableLayer = false;     // a Layer input that also takes an Editable Layer link: the Viewer's
+  bool closedMenu = false;             // a menu USD takes no other value for: a token outside it is an error
   bool optional = false;               // unauthored unless set: read as an AuthoredField
   bool dynamicType = false;            // its type follows another property: read as a VtValue
   PXR_NS::TfToken mutePassThrough;     // for an output: the input a muted node passes through it; empty for none
@@ -64,7 +66,10 @@ struct NodeDefinition {
 class NodeDefinitions {
  public:
   // Loads the definitions file at path. Throws std::invalid_argument, naming every problem, when the file can't be
-  // read, a definition is malformed, or the definitions and the node registry don't name the same node types.
+  // read, a definition is malformed, or the definitions and the node registry don't name the same node types, or don't
+  // agree on a type's role: a zone's begin or end has a zone's implementation, an authoring node (one with an Editable
+  // Layer input outside a zone) an authoring one, and an authoring node's implementation computes its value outputs,
+  // with no stage, exactly when its definition has them.
   explicit NodeDefinitions(const std::string& path);
 
   // The type's definition, or null for a type the definitions don't hold.

@@ -1,6 +1,7 @@
 #usda 1.0
 # Malformed node definitions, one problem each, for the cook's loader: each type is named for its problem. None has an
-# implementation, which the loader reports too.
+# implementation, which the loader reports too, but CreatePrim and LayerFromFile, which disagree with their
+# implementations' roles: CreatePrim has no Prim output, and LayerFromFile has an Editable Layer input.
 
 def "NotAClass"
 {
@@ -177,4 +178,50 @@ class "ZonePartnerSameEdgeToo" (
 )
 {
     int node:version = 1
+}
+
+class "EditableLayerOutputTaken"
+{
+    int node:version = 1
+    opaque outputs:layer (
+        customData = {
+            string socket = "Layer"
+            bool takesEditableLayer = 1
+        }
+    )
+}
+
+class "ClosedMenuWithoutItems"
+{
+    int node:version = 1
+    token props:mode = "a" (
+        customData = {
+            bool closedMenu = 1
+        }
+    )
+}
+
+class "CreatePrim"
+{
+    int node:version = 1
+    opaque inputs:editableLayer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+    opaque outputs:editableLayer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+}
+
+class "LayerFromFile"
+{
+    int node:version = 1
+    opaque inputs:editableLayer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
 }

@@ -19,11 +19,14 @@ SHIPPED_DEFINITIONS = Path(proscenium_cook.__file__).parent / "node_definitions.
 
 def test_shipped_definitions_match_the_registry() -> None:
     # Loading checks each definition against the registry and the reverse, and that a zone's begin and end, and only
-    # they, have a zone's implementation: step 6's types (docs/plans/cook-module.md).
+    # they, have a zone's implementation, that each authoring node has an authoring one, and that Create Prim's computes
+    # its Prim with no stage: step 8's types (docs/plans/cook-module.md).
     assert NodeDefinitions(str(SHIPPED_DEFINITIONS)).type_names() == [
+        "CreatePrim",
         "LayerFromFile",
         "NewLayerZoneBegin",
         "NewLayerZoneEnd",
+        "Prim",
         "StageOutput",
         "Viewer",
     ]
@@ -57,6 +60,11 @@ def test_definitions_without_implementations_are_refused(tmp_path: Path) -> None
         ("PartnerWithoutZone", "only a zone's begin or end has a zonePartner"),
         ("ZonePartnerMissing", "zonePartner Nowhere names no definition"),
         ("ZonePartnerSameEdge", "must be the zone's other end, naming this type as its partner"),
+        ("EditableLayerOutputTaken", "only a Layer input also takes an Editable Layer"),
+        ("ClosedMenuWithoutItems", "only a menu is closed"),
+        # Registered types defined against their implementations' roles:
+        ("CreatePrim", "computes its value outputs, with no stage, exactly when its definition has them"),
+        ("LayerFromFile", "and only one, has an authoring implementation"),
     ],
 )
 def test_malformed_definition_names_its_problem(tmp_path: Path, type_name: str, problem: str) -> None:

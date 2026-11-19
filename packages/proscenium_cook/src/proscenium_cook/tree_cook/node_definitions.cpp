@@ -126,6 +126,8 @@ AttributeDefinition ReadAttributeDefinition(const SdfAttributeSpecHandle& attrib
   attributeDefinition.optional = ReadFlag(customData, "optional", where, problems);
   attributeDefinition.dynamicType = ReadFlag(customData, "dynamicType", where, problems);
   attributeDefinition.mutePassThrough = TfToken(ReadString(customData, "mutePassThrough", where, problems));
+  attributeDefinition.takesEditableLayer = ReadFlag(customData, "takesEditableLayer", where, problems);
+  attributeDefinition.closedMenu = ReadFlag(customData, "closedMenu", where, problems);
   if (attributeDefinition.multiInput &&
       (role != AttributeRole::kInput || attributeDefinition.kind != SocketKind::kLayer)) {
     problems.push_back(where + ": only a Layer input takes several links");
@@ -135,6 +137,13 @@ AttributeDefinition ReadAttributeDefinition(const SdfAttributeSpecHandle& attrib
   }
   if (!attributeDefinition.mutePassThrough.IsEmpty() && role != AttributeRole::kOutput) {
     problems.push_back(where + ": only an output passes an input through");
+  }
+  if (attributeDefinition.takesEditableLayer &&
+      (role != AttributeRole::kInput || attributeDefinition.kind != SocketKind::kLayer)) {
+    problems.push_back(where + ": only a Layer input also takes an Editable Layer");
+  }
+  if (attributeDefinition.closedMenu && attributeDefinition.allowedTokens.empty()) {
+    problems.push_back(where + ": only a menu is closed");
   }
   return attributeDefinition;
 }
@@ -201,6 +210,33 @@ void CheckZonePartners(const std::unordered_map<TfToken, NodeDefinition, TfToken
                partner->second.zonePartner != typeName) {
       problems.push_back(where + " must be the zone's other end, naming this type as its partner");
     }
+  }
+}
+
+// The definition and its implementation agree on its role: a zone's begin or end has a zone's implementation, and an
+// authoring node, one outside a zone with an Editable Layer input, an authoring one. An authoring node's outputs other
+// than its Editable Layer are computed by its implementation's outputs hook, which gets no stage, so they never read
+// it (docs/plans/cook-module.md "Edges between tasks"): it has the hook exactly when the definition has such outputs.
+void CheckRole(const NodeDefinition& definition, const NodeBehavior& behavior, std::vector<std::string>& problems) {
+  const std::string& type = definition.typeName.GetString();
+  if ((definition.zone != ZoneEdge::kNone) != std::holds_alternative<ZoneRole>(behavior)) {
+    problems.push_back(type + ": a zone's begin or end, and only one, has a zone's implementation");
+  }
+  const bool authors = definition.zone == ZoneEdge::kNone && definition.EditableLayer(AttributeRole::kInput) != nullptr;
+  const auto* authoring = std::get_if<AuthoringRole>(&behavior);
+  if (authors != (authoring != nullptr)) {
+    problems.push_back(type +
+                       ": an authoring node, with an Editable Layer input outside a zone, and only one, has an " +
+                       "authoring implementation");
+  }
+  if (authoring == nullptr) return;
+  const bool hasValueOutputs =
+      std::any_of(definition.attributes.begin(), definition.attributes.end(), [](const AttributeDefinition& attribute) {
+        return attribute.role == AttributeRole::kOutput && attribute.kind != SocketKind::kEditableLayer;
+      });
+  if (hasValueOutputs != (authoring->outputs != nullptr)) {
+    problems.push_back(type + ": an authoring node's implementation computes its value outputs, with no stage, " +
+                       "exactly when its definition has them");
   }
 }
 
@@ -279,8 +315,8 @@ NodeDefinitions::NodeDefinitions(const std::string& path) {
     const NodeRegistration* registration = FindNodeRegistration(typeName.GetText());
     if (registration == nullptr) {
       problems.push_back(typeName.GetString() + ": no implementation");
-    } else if ((definition.zone != ZoneEdge::kNone) != std::holds_alternative<ZoneRole>(registration->behavior)) {
-      problems.push_back(typeName.GetString() + ": a zone's begin or end, and only one, has a zone's implementation");
+    } else {
+      CheckRole(definition, registration->behavior, problems);
     }
   }
   for (const std::string& typeName : registered) {

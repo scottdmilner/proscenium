@@ -1,0 +1,240 @@
+#usda 1.0
+# New Layer Zone ends' Default Prims (docs/phase3/node-tree.md "New Layer Zone"). Nested's is Child's /Root/Child, a
+# prim below the root, which USD 0.26 reads by its path. Nowhere's is /Nowhere, which its layer has no spec for, an
+# error that stops the zone. Kept starts from Read's templates/template.usda and keeps its World; Replaced starts from
+# it too and replaces it with Stage's prim. Starved's comes from NoPath, which names no prim, so it brings nothing and
+# the zone stops. Pseudo's is /, the layer's root, an error. Overed's is Ghost's over and Classed's Kind's class, each a
+# warning, and each authored.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Read"
+    {
+        int node:version = 1
+        string props:path = "//templates/template.usda"
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Nested"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/NestedEnd>
+    }
+
+    def CreatePrim "Root"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Nested.outputs:layer>
+        string inputs:name = "Root"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Child"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Root.outputs:editableLayer>
+        string inputs:parent.connect = </Tree/Root.outputs:prim>
+        string inputs:name = "Child"
+        string outputs:prim
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "NestedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Child.outputs:editableLayer>
+        string inputs:defaultPrim.connect = </Tree/Child.outputs:prim>
+        opaque outputs:layer
+    }
+
+    def StageOutput "NestedOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/NestedEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Nowhere"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/NowhereEnd>
+    }
+
+    def NewLayerZoneEnd "NowhereEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Nowhere.outputs:layer>
+        string inputs:defaultPrim = "/Nowhere"
+        opaque outputs:layer
+    }
+
+    def StageOutput "NowhereOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/NowhereEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Kept"
+    {
+        int node:version = 1
+        opaque inputs:template.connect = </Tree/Read.outputs:layer>
+        opaque outputs:layer
+        rel zone:end = </Tree/KeptEnd>
+    }
+
+    def NewLayerZoneEnd "KeptEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Kept.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "KeptOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/KeptEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Replaced"
+    {
+        int node:version = 1
+        opaque inputs:template.connect = </Tree/Read.outputs:layer>
+        opaque outputs:layer
+        rel zone:end = </Tree/ReplacedEnd>
+    }
+
+    def CreatePrim "Stage"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Replaced.outputs:layer>
+        string inputs:name = "Stage"
+        string outputs:prim
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "ReplacedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Stage.outputs:editableLayer>
+        string inputs:defaultPrim.connect = </Tree/Stage.outputs:prim>
+        opaque outputs:layer
+    }
+
+    def StageOutput "ReplacedOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/ReplacedEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Starved"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/StarvedEnd>
+    }
+
+    def NewLayerZoneEnd "StarvedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Starved.outputs:layer>
+        string inputs:defaultPrim.connect = </Tree/NoPath.outputs:prim>
+        opaque outputs:layer
+    }
+
+    def StageOutput "StarvedOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/StarvedEnd.outputs:layer>
+    }
+
+    def Prim "NoPath"
+    {
+        int node:version = 1
+        string props:path = ""
+        string outputs:prim
+    }
+
+    def NewLayerZoneBegin "Pseudo"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/PseudoEnd>
+    }
+
+    def NewLayerZoneEnd "PseudoEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Pseudo.outputs:layer>
+        string inputs:defaultPrim = "/"
+        opaque outputs:layer
+    }
+
+    def StageOutput "PseudoOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/PseudoEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Overed"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/OveredEnd>
+    }
+
+    def CreatePrim "Ghost"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Overed.outputs:layer>
+        string inputs:name = "Ghost"
+        token props:specifier = "over"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "OveredEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Ghost.outputs:editableLayer>
+        string inputs:defaultPrim = "/Ghost"
+        opaque outputs:layer
+    }
+
+    def StageOutput "OveredOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/OveredEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Classed"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/ClassedEnd>
+    }
+
+    def CreatePrim "Kind"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Classed.outputs:layer>
+        string inputs:name = "Kind"
+        token props:specifier = "class"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "ClassedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Kind.outputs:editableLayer>
+        string inputs:defaultPrim = "/Kind"
+        opaque outputs:layer
+    }
+
+    def StageOutput "ClassedOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/ClassedEnd.outputs:layer>
+    }
+}

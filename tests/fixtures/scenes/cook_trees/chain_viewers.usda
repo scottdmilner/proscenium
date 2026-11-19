@@ -1,0 +1,127 @@
+#usda 1.0
+# Viewers partway down a chain (docs/phase3/node-tree.md "Viewer"). Zone's chain authors A, then muted Muted, then B.
+# AtBegin views the begin's Editable Layer, AtA A's, AtMuted muted Muted's, which is A's, and AtEnd the end's Layer.
+# NotViewer, a Stage Output, can't take an Editable Layer. Stops' Fine authors, then Fails has an invalid Name, so
+# AtFine views Fine's copy, and AtFails gets nothing.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def NewLayerZoneBegin "Zone"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/ZoneEnd>
+    }
+
+    def CreatePrim "A"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Zone.outputs:layer>
+        string inputs:name = "A"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Muted"
+    {
+        int node:version = 1
+        bool node:mute = 1
+        opaque inputs:editableLayer.connect = </Tree/A.outputs:editableLayer>
+        string inputs:name = "M"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "B"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Muted.outputs:editableLayer>
+        string inputs:name = "B"
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "ZoneEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/B.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "Out"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/ZoneEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Stops"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/StopsEnd>
+    }
+
+    def CreatePrim "Fine"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Stops.outputs:layer>
+        string inputs:name = "F"
+        opaque outputs:editableLayer
+    }
+
+    def CreatePrim "Fails"
+    {
+        int node:version = 1
+        opaque inputs:editableLayer.connect = </Tree/Fine.outputs:editableLayer>
+        string inputs:name = ""
+        opaque outputs:editableLayer
+    }
+
+    def NewLayerZoneEnd "StopsEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Fails.outputs:editableLayer>
+        opaque outputs:layer
+    }
+
+    def Viewer "AtBegin"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Zone.outputs:layer>
+    }
+
+    def Viewer "AtA"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/A.outputs:editableLayer>
+    }
+
+    def Viewer "AtMuted"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Muted.outputs:editableLayer>
+    }
+
+    def Viewer "AtEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/ZoneEnd.outputs:layer>
+    }
+
+    def StageOutput "NotViewer"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/A.outputs:editableLayer>
+    }
+
+    def Viewer "AtFine"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Fine.outputs:editableLayer>
+    }
+
+    def Viewer "AtFails"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Fails.outputs:editableLayer>
+    }
+}

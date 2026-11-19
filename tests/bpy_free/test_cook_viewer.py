@@ -1,7 +1,7 @@
-"""The Viewer on a Layer: the stage the editor's UI shows (docs/plans/cook-module.md step 5).
+"""The Viewer: the stage the editor's UI shows, on a Layer and partway down a chain (plan steps 5 and 8).
 
-Expected values come from the note's Viewer (docs/phase3/node-tree.md "Viewer"), the plan's Output, and USD's own APIs
-on the returned stages.
+The plan is docs/plans/cook-module.md. Expected values come from the note's Viewer (docs/phase3/node-tree.md "Viewer"),
+the plan's Output, and USD's own APIs on the returned stages.
 """
 
 from __future__ import annotations
@@ -74,3 +74,67 @@ def test_viewer_keeps_its_stage_while_its_root_layer_stays(tmp_path: Path) -> No
     third = cook.cook().viewer_stages["View"]
     assert third != first
     assert Path(third.GetRootLayer().identifier) == tmp_path / "other.usda"
+
+
+# Partway down a chain
+
+
+def _chain_tree(tmp_path: Path) -> proscenium_cook.TreeCook:
+    stage = Usd.Stage.Open(str(copy_scene(Scene.COOK_TREES, tmp_path) / "chain_viewers.usda"))
+    return proscenium_cook.TreeCook(stage, base_directory=tmp_path)
+
+
+def _root_prims(stage: Usd.Stage) -> list[str]:
+    return list(stage.GetRootLayer().rootPrims.keys())
+
+
+def test_viewer_partway_down_a_chain_shows_the_layer_as_the_chain_left_it_there(tmp_path: Path) -> None:
+    result = _chain_tree(tmp_path).cook()
+    viewers = result.viewer_stages
+    assert _root_prims(viewers["AtBegin"]) == []
+    assert _root_prims(viewers["AtA"]) == ["A"]
+    # A muted node passes its Editable Layer through, so a Viewer on it sees what the node before it left.
+    assert viewers["AtMuted"].GetRootLayer() == viewers["AtA"].GetRootLayer()
+    assert _root_prims(viewers["AtEnd"]) == ["A", "B"]
+    # Its copy is the Viewer's own, never the zone's layer, and the nodes after it still run.
+    zone_layer = result.stage_outputs["Out"].GetRootLayer()
+    assert viewers["AtA"].GetRootLayer() != zone_layer
+    assert viewers["AtA"].GetRootLayer().anonymous
+    assert viewers["AtEnd"].GetRootLayer() == zone_layer
+    assert _root_prims(result.stage_outputs["Out"]) == ["A", "B"]
+
+
+def test_viewer_link_doesnt_branch_the_chain(tmp_path: Path) -> None:
+    result = _chain_tree(tmp_path).cook()
+    for node_id in ("Zone", "A", "Muted", "B", "ZoneEnd", "AtBegin", "AtA", "AtMuted", "AtEnd"):
+        assert result.node_reports.get(node_id) is None or not result.node_reports[node_id].diagnostics, node_id
+
+
+def test_only_a_viewer_takes_an_editable_layer(tmp_path: Path) -> None:
+    result = _chain_tree(tmp_path).cook()
+    (error,) = result.node_reports["NotViewer"].diagnostics
+    assert (error.severity, error.code) == (Severity.ERROR, DiagnosticCode.INCOMPATIBLE_LINK)
+    assert "NotViewer" not in result.stage_outputs
+
+
+def test_viewer_past_where_the_chain_stops_gets_nothing(tmp_path: Path) -> None:
+    result = _chain_tree(tmp_path).cook()
+    assert _root_prims(result.viewer_stages["AtFine"]) == ["F"]
+    assert "AtFails" not in result.viewer_stages
+    (warning,) = result.node_reports["AtFails"].diagnostics
+    assert (warning.severity, warning.code) == (Severity.WARNING, DiagnosticCode.NO_UPSTREAM_VALUE)
+    assert '"Fails"' in warning.message
+
+
+def test_viewer_partway_down_a_chain_keeps_its_stage_across_cooks(tmp_path: Path) -> None:
+    stage = Usd.Stage.Open(str(copy_scene(Scene.COOK_TREES, tmp_path) / "chain_viewers.usda"))
+    cook = proscenium_cook.TreeCook(stage, base_directory=tmp_path)
+    first = cook.cook().viewer_stages["AtA"]
+    # The zone cooks inside an SdfChangeBlock, and the Viewer's kept stage, which composes its copy, recomposes once it
+    # closes, so it shows the recook's content.
+    stage.GetRootLayer().GetAttributeAtPath("/Tree/A.inputs:name").default = "Renamed"
+    second = cook.cook().viewer_stages["AtA"]
+    assert second == first
+    assert _root_prims(second) == ["Renamed"]
+    assert second.GetPrimAtPath("/Renamed").IsValid()
+    assert not second.GetPrimAtPath("/A").IsValid()

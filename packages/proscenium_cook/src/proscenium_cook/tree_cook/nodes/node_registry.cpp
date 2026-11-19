@@ -9,9 +9,11 @@ namespace proscenium {
 const std::vector<NodeRegistration>& NodeRegistry() {
   // One line per node type, each defined in its own .cpp file beside this one and declared in node_types.h.
   static const std::vector<NodeRegistration> registry{
+      {"CreatePrim", AuthoringRole{AuthorCreatePrim, CreatePrimPath}},
       {"LayerFromFile", TaskRole{RunLayerFromFile, LayerFromFileFile}},
-      {"NewLayerZoneBegin", ZoneRole{NewLayerZoneFile, NewLayerZoneTemplate, nullptr}},
-      {"NewLayerZoneEnd", ZoneRole{nullptr, nullptr, NewLayerZoneOutputs}},
+      {"NewLayerZoneBegin", ZoneRole{NewLayerZoneFile, NewLayerZoneTemplate, nullptr, nullptr}},
+      {"NewLayerZoneEnd", ZoneRole{nullptr, nullptr, NewLayerZoneFinish, NewLayerZoneOutputs}},
+      {"Prim", ValueRole{ComputePrim}},
       {"StageOutput", TaskRole{RunStageOutput, nullptr}},
       {"Viewer", TaskRole{RunViewer, nullptr}},
   };

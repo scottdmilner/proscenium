@@ -75,6 +75,18 @@ const char* DiagnosticCodeName(DiagnosticCode code) {
       return "unlinked-input";
     case DiagnosticCode::kMissingStageMetrics:
       return "missing-stage-metrics";
+    case DiagnosticCode::kInvalidDefaultPrim:
+      return "invalid-default-prim";
+    case DiagnosticCode::kDefaultPrimNotDef:
+      return "default-prim-not-def";
+    case DiagnosticCode::kInvalidPrimName:
+      return "invalid-prim-name";
+    case DiagnosticCode::kExistingPrimSpec:
+      return "existing-prim-spec";
+    case DiagnosticCode::kUnknownPrimType:
+      return "unknown-prim-type";
+    case DiagnosticCode::kNonConcretePrimType:
+      return "non-concrete-prim-type";
   }
   return "";
 }

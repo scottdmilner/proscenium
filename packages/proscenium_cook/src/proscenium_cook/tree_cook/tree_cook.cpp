@@ -5,6 +5,7 @@
 #include <pxr/base/tf/pathUtils.h>
 #include <pxr/base/tf/stringUtils.h>
 #include <pxr/base/vt/dictionary.h>
+#include <pxr/usd/sdf/changeBlock.h>
 #include <pxr/usd/sdf/layer.h>
 
 #if defined(__APPLE__)
@@ -16,7 +17,9 @@
 #include <stdexcept>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "edit_table.h"
 #include "layer_copies.h"
 #include "node_graph.h"
 #include "node_ids.h"
@@ -95,9 +98,21 @@ class CookPass {
         valueOf_([this](const OutputRef& ref) {
           const auto found = outputs_[ref.node].find(ref.attributeName);
           return found == outputs_[ref.node].end() ? VtValue() : found->second;
-        }) {}
+        }),
+        onChain_(tree.nodes.size(), false),
+        viewed_(tree.nodes.size(), false) {
+    for (const Zone& zone : zones_) {
+      for (const std::size_t node : zone.chain) onChain_[node] = true;
+    }
+    FindViewedNodes();
+  }
 
-  // The value nodes, each computed once, in the node graph's order, so each value is ready before any task uses it.
+  // The value nodes, and the value outputs of each chain node on a chain, each computed once, in the node graph's
+  // order, so each value is ready before any task uses it. A chain node's are computed from its inputs alone
+  // (node_roles.h), so one zone's Create Prim gives its Prim to a node in another zone, whichever task runs first. What
+  // it reports is held until its zone's chain reaches it, with its links, since a Layer link's task hasn't run yet: a
+  // node the chain stops before reports nothing, as it doesn't run. A chain node on no chain gives nothing out: it
+  // authors nothing for its Prim to name.
   void ComputeValues() {
     for (const std::size_t index : graph_.Order()) {
       const TreeNode& node = tree_.nodes[index];
@@ -106,6 +121,12 @@ class CookPass {
         Run(index, [&](const TreeInputReader& inputs) {
           outputs_[index] = role->compute(ValueInputs(node, inputs, CacheOf(index), diagnostics_, baseDirectory_));
         });
+      } else if (const auto* authoring = std::get_if<AuthoringRole>(&node.registration->behavior);
+                 authoring != nullptr && authoring->outputs != nullptr && onChain_[index]) {
+        const TreeInputReader inputs(tree_, graph_, index, valueOf_);
+        const TfErrorMark mark;
+        outputs_[index] = authoring->outputs(ValueInputs(node, inputs, CacheOf(index), held_, baseDirectory_));
+        ReportTfErrors(mark, node, held_);
       }
     }
   }
@@ -218,7 +239,7 @@ class CookPass {
   // Runs a node: warns of its links that bring nothing, then calls it (Call).
   template <class Body>
   void Run(std::size_t index, const Body& run) {
-    ReportLinksBringingNothing(index);
+    static_cast<void>(ReportLinksBringingNothing(index));
     Call(index, run);
   }
 
@@ -233,9 +254,10 @@ class CookPass {
 
   // Warns once for each node whose output one of this node's links traces back to but that brings nothing: it failed,
   // can't run, or is muted with nothing to pass through (docs/plans/cook-module.md "Order and results"). The warning
-  // names that node, whose own diagnostic says why, and the first input it fails to reach. The node still runs,
-  // without those values. An Editable Layer link is its chain's, which its zone's task follows instead.
-  void ReportLinksBringingNothing(std::size_t index) {
+  // names that node, whose own diagnostic says why, and the first input it fails to reach. A task node still runs,
+  // without those values, and a node of a zone's chain stops it, since its edit would be missing. An Editable Layer
+  // link is its chain's, which its zone's task follows instead. Returns whether every link brings its value.
+  [[nodiscard]] bool ReportLinksBringingNothing(std::size_t index) {
     const TreeNode& node = tree_.nodes[index];
     std::map<std::size_t, TfToken> broughtNothing;  // by node index, so in node-ID order
     for (const auto& [input, links] : node.links) {
@@ -252,43 +274,87 @@ class CookPass {
     for (const auto& [sourceIndex, input] : broughtNothing) {
       WarnNothingFrom(node, input, tree_.nodes[sourceIndex], diagnostics_);
     }
+    return broughtNothing.empty();
+  }
+
+  // Marks each begin or chain node whose Editable Layer a Viewer is linked to, partway down its chain: a link from it
+  // into an input that isn't a chain's, traced back through muted nodes, which pass their Editable Layer through.
+  void FindViewedNodes() {
+    for (const TreeNode& node : tree_.nodes) {
+      if (node.definition == nullptr) continue;  // a node of unknown type, which has its error
+      for (const auto& [input, links] : node.links) {
+        const AttributeDefinition* attribute = node.definition->FindAttribute(input);
+        if (attribute == nullptr || attribute->kind == SocketKind::kEditableLayer) continue;
+        for (const NodeLink& link : links) {
+          for (const OutputRef& origin : graph_.LinkOrigins(link)) {
+            const TreeNode& source = tree_.nodes[origin.node];
+            const AttributeDefinition* output =
+                source.definition != nullptr ? source.definition->EditableLayer(AttributeRole::kOutput) : nullptr;
+            if (output != nullptr && output->attributeName == origin.attributeName) viewed_[origin.node] = true;
+          }
+        }
+      }
+    }
+  }
+
+  // A Viewer's copy of the scratch layer as the chain has left it at the node, which commits it as its Editable Layer
+  // output's value (docs/phase3/node-tree.md "Viewer"). The copy is kept in the node's cache, so a Viewer's stage keeps
+  // composing it across cooks; it's one TransferContent per cook of the zone, for each node a Viewer is linked to.
+  void CopyForViewers(std::size_t index, const SdfLayerHandle& scratch) {
+    if (!viewed_[index]) return;
+    const TreeNode& node = tree_.nodes[index];
+    auto& copy = CacheOf(index).Get<SdfLayerRefPtr>("viewerCopy");
+    if (!copy) copy = SdfLayer::CreateAnonymous(PrimNameFromNodeId(node.id) + "_viewed");
+    copy->TransferContent(scratch);
+    outputs_[index][node.definition->EditableLayer(AttributeRole::kOutput)->attributeName] =
+        VtValue(SdfLayerHandle(copy));
   }
 
   // Cooks a zone's chain into a scratch layer, from its begin, and moves the result into the zone's layer with
   // TransferContent, so stages composing the layer see one change (docs/phase3/node-tree.md "Cooking the layers"). The
   // scratch layer starts as a copy of the begin's Template, or empty. A muted chain node passes its Editable Layer
-  // through. The chain stops at its first node that can't run or reports an error, and then the zone gives no layer
-  // out: the nodes after it don't run, and its end warns, naming that node.
+  // through. The chain stops at its first node that can't run, reports an error, or has a link that brings nothing,
+  // and then the zone gives no layer out: the nodes after it don't run, and its end warns, naming that node.
+  //
+  // The whole zone cooks inside one SdfChangeBlock, so Sdf processes its changes once, when the block closes: the
+  // chain's authoring into the scratch layer, the Viewers' copies, and the move into the zone's layer, which each
+  // stage composing a layer then sees as one change. Inside the block the cook calls only Sdf (and UsdUtils' layer
+  // pass, which is Sdf's), never a stage or other API downstream of Sdf's notices, as SdfChangeBlock requires: those
+  // would see stale layers. A node's value outputs, which may query USD's registries, are computed before any zone's
+  // block opens, and a Stage Output or Viewer composes its stage in its own task, after the block has closed.
   void CookZone(std::size_t zoneIndex) {
+    const SdfChangeBlock changes;
     const Zone& zone = zones_[zoneIndex];
     const TreeNode& begin = tree_.nodes[zone.begin];
-    std::optional<std::size_t> stoppedAt;
-    if (!begin.runnable || begin.muted || diagnostics_.HasError(begin.id)) stoppedAt = zone.begin;
     const SdfLayerRefPtr scratch = SdfLayer::CreateAnonymous();
     WriteTable writeTable;
-    if (!stoppedAt) {
-      // Its links are reported here, not in CheckFiles, which runs before the tasks upstream of it have committed.
-      ReportLinksBringingNothing(zone.begin);
-      const std::optional<WriteTable> started = StartZone(zone.begin, scratch);
-      if (started && !diagnostics_.HasError(begin.id)) {
-        writeTable = *started;
-      } else {
-        stoppedAt = zone.begin;
-      }
+    EditTable editTable;
+
+    // 1. The begin starts the scratch layer as a copy of its Template, whose prim specs the edit table gives to the
+    // begin.
+    std::optional<std::size_t> stoppedAt;
+    if (std::optional<WriteTable> started = Begin(zone.begin, scratch)) {
+      writeTable = std::move(*started);
+      RecordTemplate(scratch, begin.id, editTable);
+      CopyForViewers(zone.begin, scratch);
+    } else {
+      stoppedAt = zone.begin;
     }
+
+    // 2. Each chain node in order, each authoring through its context and recording its writes in the edit table, and a
+    // Viewer's copy after each node one is linked to. A muted node authors nothing.
     for (const std::size_t index : zone.chain) {
       if (stoppedAt) break;
-      const TreeNode& node = tree_.nodes[index];
-      if (node.muted) continue;
-      const auto* role = node.runnable ? std::get_if<AuthoringRole>(&node.registration->behavior) : nullptr;
-      if (role != nullptr) {
-        Run(index, [&](const TreeInputReader& inputs) {
-          AuthoringContext context(node, inputs, CacheOf(index), diagnostics_, baseDirectory_);
-          role->author(context);
-        });
+      if (tree_.nodes[index].muted) continue;
+      if (!Author(index, scratch, editTable)) {
+        stoppedAt = index;
+        break;
       }
-      if (!node.runnable || diagnostics_.HasError(node.id)) stoppedAt = index;
+      CopyForViewers(index, scratch);
     }
+
+    // 3. The end, when the chain reaches it: it warns naming the node that stopped the chain, or finishes the layer,
+    // which then moves into the zone's layer, and commits its outputs.
     if (!zone.reachesEnd || !zone.end) return;  // its end has its broken-chain error
     const std::size_t endIndex = *zone.end;
     const TreeNode& end = tree_.nodes[endIndex];
@@ -299,15 +365,69 @@ class CookPass {
       return;
     }
     const auto& role = std::get<ZoneRole>(end.registration->behavior);
+    if (!ReportLinksBringingNothing(endIndex)) return;
+    if (role.finish != nullptr) {
+      Call(endIndex, [&](const TreeInputReader& inputs) {
+        AuthoringContext context(end, inputs, CacheOf(endIndex), diagnostics_, baseDirectory_, scratch, editTable);
+        role.finish(context);
+      });
+      if (diagnostics_.HasError(end.id)) return;
+    }
     const SdfLayerHandle& layer = zoneLayers_[zoneIndex];
-    Run(endIndex, [&](const TreeInputReader&) {
+    Call(endIndex, [&](const TreeInputReader&) {
       layer->TransferContent(scratch);
       if (role.outputs != nullptr) outputs_[endIndex] = role.outputs(layer);
     });
-    // The table describes the layer as it was last committed, so it's kept beside it.
-    auto& kept = CacheOf(zone.begin).Get<WriteTable>("writeTable");
-    kept = std::move(writeTable);
-    ReportAnchoredPaths(begin, kept);
+
+    // 4. The tables describe the layer as it was last committed, so they're kept beside it, and the begin reports them.
+    auto& keptWrites = CacheOf(zone.begin).Get<WriteTable>("writeTable");
+    keptWrites = std::move(writeTable);
+    auto& keptEdits = CacheOf(zone.begin).Get<EditTable>("editTable");
+    keptEdits = std::move(editTable);
+    ReportTables(begin, keptWrites, keptEdits);
+  }
+
+  // Starts a zone's scratch layer from its begin (StartZone), returning the write table for what it copied, or nothing
+  // when the begin stops the zone: it can't run, is muted, has an error, or has a link that brings nothing. Its links
+  // are reported here, not in CheckFiles, which runs before the tasks upstream of it have committed.
+  std::optional<WriteTable> Begin(std::size_t beginIndex, const SdfLayerHandle& scratch) {
+    const TreeNode& begin = tree_.nodes[beginIndex];
+    if (!begin.runnable || begin.muted || diagnostics_.HasError(begin.id)) return std::nullopt;
+    if (!ReportLinksBringingNothing(beginIndex)) return std::nullopt;
+    std::optional<WriteTable> started = StartZone(beginIndex, scratch);
+    if (diagnostics_.HasError(begin.id)) return std::nullopt;
+    return started;
+  }
+
+  // Runs one chain node through its context. Returns whether the chain goes on past it: not when it can't run, has an
+  // error, from the checks or from computing its value outputs, or has a link that brings nothing, or when it reports
+  // an error as it authors.
+  bool Author(std::size_t index, const SdfLayerHandle& scratch, EditTable& editTable) {
+    const TreeNode& node = tree_.nodes[index];
+    // What computing its value outputs reported (ComputeValues), now that the chain reaches it.
+    if (const auto held = held_.byNode.find(node.id); held != held_.byNode.end()) {
+      std::vector<NodeDiagnostic>& reported = diagnostics_.byNode[node.id];
+      reported.insert(reported.end(), held->second.begin(), held->second.end());
+    }
+    if (!node.runnable || diagnostics_.HasError(node.id)) return false;
+    if (!ReportLinksBringingNothing(index)) return false;
+    const auto* role = std::get_if<AuthoringRole>(&node.registration->behavior);
+    if (role == nullptr) return true;
+    Call(index, [&](const TreeInputReader& inputs) {
+      AuthoringContext context(node, inputs, CacheOf(index), diagnostics_, baseDirectory_, scratch, editTable);
+      role->author(context);
+    });
+    return !diagnostics_.HasError(node.id);
+  }
+
+  // Gives the Template's content, copied into the layer, to the begin in the edit table: each prim spec, a spec inside
+  // a variant keyed by its path there, such as /A{look=red}Child, and each layer metadata field.
+  static void RecordTemplate(const SdfLayerHandle& layer, const std::string& beginId, EditTable& editTable) {
+    const EditAuthor begin{beginId, EditKind::kTemplate};
+    layer->Traverse(SdfPath::AbsoluteRootPath(), [&](const SdfPath& path) {
+      if (path.IsPrimPath()) editTable.primSpecs[path] = begin;
+    });
+    for (const TfToken& field : layer->GetPseudoRoot()->ListInfoKeys()) editTable.layerFields[field] = begin;
   }
 
   // Fills a zone's empty scratch layer, before its chain runs, with a copy of the layer its begin starts from (a New
@@ -346,13 +466,28 @@ class CookPass {
     return table;
   }
 
-  // The begin's report data: the asset paths its zone's layer holds anchored, each mapped to the path as authored,
-  // which Write makes relative to the zone's file (docs/phase3/node-tree.md "Provenance").
-  void ReportAnchoredPaths(const TreeNode& begin, const WriteTable& table) {
-    if (table.empty()) return;
-    VtDictionary anchored;
-    for (const auto& [path, authored] : table) anchored[path] = VtValue(authored);
-    result_.nodeReports[begin.id].reportData["anchoredPaths"] = VtValue(anchored);
+  // The begin's report data, its zone's tables (docs/phase3/node-tree.md "Provenance"): anchoredPaths, the asset paths
+  // its layer holds anchored, each mapped to the path as authored, which Write makes relative to the zone's file; and
+  // primSpecs and layerFields, each prim spec's path and each layer metadata field mapped to the node ID of the node
+  // that wrote it.
+  void ReportTables(const TreeNode& begin, const WriteTable& writeTable, const EditTable& editTable) {
+    if (writeTable.empty() && editTable.primSpecs.empty() && editTable.layerFields.empty()) return;
+    VtDictionary& reportData = result_.nodeReports[begin.id].reportData;
+    if (!writeTable.empty()) {
+      VtDictionary anchored;
+      for (const auto& [path, authored] : writeTable) anchored[path] = VtValue(authored);
+      reportData["anchoredPaths"] = VtValue(anchored);
+    }
+    if (!editTable.primSpecs.empty()) {
+      VtDictionary primSpecs;
+      for (const auto& [path, author] : editTable.primSpecs) primSpecs[path.GetString()] = VtValue(author.nodeId);
+      reportData["primSpecs"] = VtValue(primSpecs);
+    }
+    if (!editTable.layerFields.empty()) {
+      VtDictionary layerFields;
+      for (const auto& [field, author] : editTable.layerFields) layerFields[field.GetString()] = VtValue(author.nodeId);
+      reportData["layerFields"] = VtValue(layerFields);
+    }
   }
 
   const TreeNodes& tree_;
@@ -361,11 +496,14 @@ class CookPass {
   const std::string& baseDirectory_;
   Caches& caches_;
   CookDiagnostics& diagnostics_;
+  CookDiagnostics held_;  // what each chain node's value outputs reported, until its chain reaches it (ComputeValues)
   CookResult& result_;
   std::vector<ValueOutputs> outputs_;  // each node's committed outputs this cook, by node index
   TreeInputReader::OutputValues valueOf_;
   std::vector<SdfLayerHandle> zoneLayers_;          // by zone index, from MakeZoneLayers
   std::map<std::string, std::size_t> zoneOfLayer_;  // zone index by its layer's identifier
+  std::vector<bool> onChain_;                       // by node index: a node on a zone's chain, its end excluded
+  std::vector<bool> viewed_;                        // by node index: a begin or chain node a Viewer is linked to
 };
 
 }  // namespace

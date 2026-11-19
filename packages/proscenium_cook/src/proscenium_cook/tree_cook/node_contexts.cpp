@@ -1,7 +1,9 @@
 #include "node_contexts.h"
 
+#include <pxr/base/tf/errorMark.h>
 #include <pxr/base/tf/stringUtils.h>
 #include <pxr/usd/sdf/attributeSpec.h>
+#include <pxr/usd/sdf/primSpec.h>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -54,6 +56,44 @@ std::optional<std::string> NodeContext::ExpandPath(const std::string& path, cons
         AttributePath(attributeName));
   }
   return path;
+}
+
+bool AuthoringContext::HasPrimSpec(const SdfPath& path) const { return static_cast<bool>(layer_->GetPrimAtPath(path)); }
+
+std::optional<SdfSpecifier> AuthoringContext::PrimSpecifier(const SdfPath& path) const {
+  const SdfPrimSpecHandle prim = layer_->GetPrimAtPath(path);
+  if (!prim) return std::nullopt;
+  return prim->GetSpecifier();
+}
+
+const EditAuthor* AuthoringContext::PrimSpecAuthor(const SdfPath& path) const {
+  const auto found = edits_.primSpecs.find(path);
+  return found == edits_.primSpecs.end() ? nullptr : &found->second;
+}
+
+void AuthoringContext::CreatePrimSpec(const SdfPath& path, SdfSpecifier specifier, const TfToken& typeName) {
+  // Each missing ancestor, root first, becomes an over, as SdfCreatePrimInLayer makes it, and is this node's.
+  SdfPathVector missing;
+  for (SdfPath ancestor = path.GetParentPath(); ancestor.IsPrimPath() && !HasPrimSpec(ancestor);
+       ancestor = ancestor.GetParentPath()) {
+    missing.push_back(ancestor);
+  }
+  const SdfPrimSpecHandle prim = SdfCreatePrimInLayer(layer_, path);
+  // Each ancestor it made is recorded, even when it fails partway, so every spec the layer holds has its entry.
+  for (const SdfPath& ancestor : missing) {
+    if (HasPrimSpec(ancestor)) edits_.primSpecs[ancestor] = {NodeId(), EditKind::kMissingAncestor};
+  }
+  if (!prim) return;  // its Tf error is the node's
+  prim->SetSpecifier(specifier);
+  if (!typeName.IsEmpty()) prim->SetTypeName(typeName.GetString());
+  edits_.primSpecs[path] = {NodeId()};
+}
+
+void AuthoringContext::SetLayerField(const TfToken& field, const VtValue& value) {
+  // A field Sdf refuses posts a Tf error, which stays posted as the node's own, and isn't recorded.
+  const TfErrorMark mark;
+  layer_->SetField(SdfPath::AbsoluteRootPath(), field, value);
+  if (mark.IsClean()) edits_.layerFields[field] = {NodeId()};
 }
 
 }  // namespace proscenium

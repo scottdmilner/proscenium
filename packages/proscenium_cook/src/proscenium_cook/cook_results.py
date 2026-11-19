@@ -59,11 +59,17 @@ class DiagnosticCode(StrEnum):
     MISSING_BASE_DIRECTORY = "missing-base-directory"  # a // path with no base directory: the .blend isn't saved
     WORKING_DIRECTORY_PATH = "working-directory-path"  # a ./ or ../ path, which resolves against the working directory
     # A node type's own:
-    MISSING_PATH = "missing-path"  # Layer from File: an empty Path
+    MISSING_PATH = "missing-path"  # Layer from File or Prim: an empty Path
     FILE_NOT_FOUND = "file-not-found"  # Layer from File: no file at Path
     UNREADABLE_FILE = "unreadable-file"  # Layer from File: a file that doesn't parse as a layer
     UNLINKED_INPUT = "unlinked-input"  # Stage Output: nothing linked into its Layer
     MISSING_STAGE_METRICS = "missing-stage-metrics"  # Stage Output: a root layer with no upAxis or metersPerUnit
+    INVALID_DEFAULT_PRIM = "invalid-default-prim"  # New Layer Zone: a Default Prim that isn't a prim of its layer
+    DEFAULT_PRIM_NOT_DEF = "default-prim-not-def"  # New Layer Zone: a Default Prim whose spec is an over or a class
+    INVALID_PRIM_NAME = "invalid-prim-name"  # Create Prim: a Name that isn't a valid identifier
+    EXISTING_PRIM_SPEC = "existing-prim-spec"  # Create Prim: a prim the layer already has a spec for
+    UNKNOWN_PRIM_TYPE = "unknown-prim-type"  # Create Prim: a Type that names no registered schema
+    NON_CONCRETE_PRIM_TYPE = "non-concrete-prim-type"  # Create Prim: a Type that names an abstract or API schema
 
 
 @dataclass(frozen=True)

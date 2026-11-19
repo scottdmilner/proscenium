@@ -2,6 +2,11 @@
 // this one and listed once in node_registry.cpp.
 #pragma once
 
+#include <pxr/pxr.h>
+#include <pxr/usd/sdf/layer.h>
+
+#include <optional>
+
 #include "node_contexts.h"
 
 namespace proscenium {
@@ -10,10 +15,17 @@ namespace proscenium {
 void RunLayerFromFile(TaskContext& context);
 NodeFile LayerFromFileFile(const NodeContext& context);
 
-// new_layer_zone.cpp: the begin's file and Template, and the end's outputs.
+// new_layer_zone.cpp: the begin's file and Template, and the end's Default Prim and outputs.
 NodeFile NewLayerZoneFile(const NodeContext& context);
 std::optional<PXR_NS::SdfLayerHandle> NewLayerZoneTemplate(const NodeContext& context);
+void NewLayerZoneFinish(AuthoringContext& context);
 ValueOutputs NewLayerZoneOutputs(const PXR_NS::SdfLayerHandle& layer);
+
+ValueOutputs ComputePrim(const ValueInputs& context);  // prim.cpp
+
+// create_prim.cpp: the spec it authors, and its Prim output.
+void AuthorCreatePrim(AuthoringContext& context);
+ValueOutputs CreatePrimPath(const ValueInputs& context);
 
 void RunStageOutput(TaskContext& context);  // stage_output.cpp
 void RunViewer(TaskContext& context);       // viewer.cpp

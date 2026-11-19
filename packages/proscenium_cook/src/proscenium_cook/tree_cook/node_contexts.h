@@ -1,13 +1,15 @@
 // The contexts a node's function gets, one per role (node_roles.h). A node reaches the tree, its stage, and its layer
 // only through its context: its inputs with the definitions' defaults for unauthored ones, its diagnostics, and its
 // cache (docs/plans/cook-module.md "The package"). Each role's context gains what that role reaches as the plan's
-// steps add it: a chain node's scratch layer arrives with step 8, and its zone's stage with step 9.
+// steps add it: a chain node's zone's stage arrives with step 9.
 #pragma once
 
 #include <pxr/base/tf/token.h>
 #include <pxr/base/vt/value.h>
 #include <pxr/pxr.h>
+#include <pxr/usd/sdf/layer.h>
 #include <pxr/usd/sdf/path.h>
+#include <pxr/usd/sdf/types.h>
 #include <pxr/usd/usd/stage.h>
 
 #include <any>
@@ -21,6 +23,7 @@
 #include <vector>
 
 #include "cook_diagnostics.h"
+#include "edit_table.h"
 #include "node_graph.h"
 #include "node_input_reader.h"
 #include "node_roles.h"
@@ -122,11 +125,36 @@ class ValueInputs final : public NodeContext {
   using NodeContext::NodeContext;
 };
 
-// One step of a zone's chain, which runs inside its zone's task. Its scratch layer arrives with the first authoring
-// node, step 8 of the plan, and its zone's stage with step 9.
+// One step of a zone's chain, which runs inside its zone's task, or a zone's end finishing it. It authors into the
+// zone's scratch layer only through this context, which records each write in the zone's edit table, so provenance is
+// complete because of the interface (docs/phase3/node-tree.md "Provenance").
 class AuthoringContext final : public NodeContext {
  public:
-  using NodeContext::NodeContext;
+  AuthoringContext(const TreeNode& node, const NodeInputReader& inputs, NodeCache& cache, CookDiagnostics& diagnostics,
+                   const std::string& baseDirectory, PXR_NS::SdfLayerHandle layer, EditTable& edits)
+      : NodeContext(node, inputs, cache, diagnostics, baseDirectory), layer_(std::move(layer)), edits_(edits) {}
+
+  // Whether the layer has a prim spec at path, as the chain has left it.
+  [[nodiscard]] bool HasPrimSpec(const PXR_NS::SdfPath& path) const;
+
+  // The specifier of the layer's prim spec at path; nothing for none.
+  [[nodiscard]] std::optional<PXR_NS::SdfSpecifier> PrimSpecifier(const PXR_NS::SdfPath& path) const;
+
+  // Who last wrote the prim spec at path, from the edit table; null for none.
+  [[nodiscard]] const EditAuthor* PrimSpecAuthor(const PXR_NS::SdfPath& path) const;
+
+  // Authors a prim spec at path, with its specifier and type name, recorded as this node's, and an over for each
+  // ancestor the layer lacks, recorded as this node's for a missing ancestor. A spec already at path takes the
+  // specifier and type name in place, keeping its position among its siblings and its other fields.
+  void CreatePrimSpec(const PXR_NS::SdfPath& path, PXR_NS::SdfSpecifier specifier, const PXR_NS::TfToken& typeName);
+
+  // Authors one of the layer's metadata fields, such as defaultPrim, recorded as this node's. A field the layer doesn't
+  // take is a Tf error, the node's own.
+  void SetLayerField(const PXR_NS::TfToken& field, const PXR_NS::VtValue& value);
+
+ private:
+  PXR_NS::SdfLayerHandle layer_;
+  EditTable& edits_;
 };
 
 // The stages a cook returns, each keyed by node ID.

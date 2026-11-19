@@ -30,10 +30,13 @@ struct ValueRole {
   ValueOutputs (*compute)(const ValueInputs& inputs) = nullptr;
 };
 
-// One step of a zone's chain: it reads the zone's stage and authors into its scratch layer. Its value outputs are
-// computed from its inputs and properties alone.
+// One step of a zone's chain: it reads the zone's stage and authors into its scratch layer.
 struct AuthoringRole {
   void (*author)(AuthoringContext& context) = nullptr;
+  // Its outputs other than its Editable Layer, such as Create Prim's Prim, computed from its inputs and properties
+  // alone, with the value nodes, before any task runs; null for a type with none. It gets no stage, so a value it
+  // gives another zone never waits on its own zone's task (docs/plans/cook-module.md "Edges between tasks").
+  ValueOutputs (*outputs)(const ValueInputs& inputs) = nullptr;
 };
 
 // The file a node saves a layer to or reads one from, and the attribute that names it. No other zone saves to a zone's
@@ -52,6 +55,9 @@ struct ZoneRole {
   // A begin's: the layer its zone starts as a copy of, or none for an empty start. A null layer is a start whose link
   // brings nothing, which stops the zone. The machinery makes the copy (layer_copies.h).
   std::optional<PXR_NS::SdfLayerHandle> (*startsFrom)(const NodeContext& context) = nullptr;
+  // An end's: what it authors once its zone's chain has run, such as a New Layer Zone's defaultPrim, before the
+  // scratch layer moves into the zone's layer. An error it reports stops the zone.
+  void (*finish)(AuthoringContext& context) = nullptr;
   // An end's: its outputs, given its zone's finished layer.
   ValueOutputs (*outputs)(const PXR_NS::SdfLayerHandle& layer) = nullptr;
 };

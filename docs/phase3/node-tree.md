@@ -264,7 +264,7 @@ The cook records, from its first version, which node authored each edit and wher
 | A prim field | prim path and field | `/World/Chair` `kind` → Edit Prim |
 | A list-op item | prim path, field, and item | `/Set` references `@…/chair.usda@` → Reference |
 | Layer metadata | field and item | a `subLayers` entry → Sublayer; a `relocates` entry → Relocate |
-| A prim spec | prim path | Create Prim; Template content → the zone's begin node; implicit `over` ancestors → the node that needed them |
+| A prim spec | prim path | Create Prim; Template content → the zone's begin node; implicit `over` ancestors → the node that needed them, until a Create Prim takes one |
 
 - Paths are keyed as authored, so an edit inside a variant is at `/A{look=red}Child`.
 - Only the last writer is kept. A node whose write a later node replaces is warned while authoring, as [List Edits](#list-edits) does for Explicit.
@@ -378,7 +378,7 @@ Blender has only a few socket shapes, so each family's sockets share a color, an
 Each node lists its inputs, outputs, and properties (set on the node, not linked), then what it authors and what it reports.
 
 Two rules hold across nodes:
-- **Known sets are offered.** Wherever a node takes a token from a known set, it offers that set as a menu or a search: a token attribute's schema `allowedTokens` (`visibility`, `purpose`, `subdivisionScheme`, …), the registered kinds (**Checked:** `group`, `component`, `assembly`, `model`, `subcomponent`), registered schema and API schema names, and variant sets and variants on the stage being checked. The set is a suggestion where USD allows other values: **Checked:** setting `subdivisionScheme` to `bogus` succeeded and read back `bogus`, and a pipeline can register its own kinds. A value outside the set is a warning, not an error. `upAxis` is the one closed set.
+- **Known sets are offered.** Wherever a node takes a token from a known set, it offers that set as a menu or a search: a token attribute's schema `allowedTokens` (`visibility`, `purpose`, `subdivisionScheme`, …), the registered kinds (**Checked:** `group`, `component`, `assembly`, `model`, `subcomponent`), registered schema and API schema names, and variant sets and variants on the stage being checked. The set is a suggestion where USD allows other values: **Checked:** setting `subdivisionScheme` to `bogus` succeeded and read back `bogus`, and a pipeline can register its own kinds. A value outside the set is a warning, not an error. `upAxis` and a prim's specifier are the closed sets, where a value outside is an error.
 - **Optional fields are unauthored unless set.** A field of Edit Prim or Configure Layer has three states: unauthored, set, and, for list ops, removed. Unauthored differs from setting the fallback: `active = true` in a stronger layer overrides a weaker layer's `active = false`, while leaving it unauthored lets the weaker opinion through. A Blender `BoolProperty` alone can't hold the three states, so each field has an explicit "author this" toggle or an enum with an unauthored item.
 
 ### Layer from File
@@ -394,10 +394,10 @@ Reads a layer.
 Authors a new layer. A begin node and an end node, paired as in [Node Zones](node-zones.md).
 - **Begin inputs:** File, where Write saves the layer, typed or from a [Substitution Zone](#substitution-zone)'s item; Template (Layer, optional), the layer the zone starts from; Context Hint (Layer, optional), overriding the context derived from the File ([The Zone's Stage](#the-zones-stage)).
 - **Begin outputs:** Editable Layer: empty, or a copy of the Template.
-- **End inputs:** Editable Layer; Default Prim (Prim, optional), the root prim that a reference or payload without a target prim composes.
+- **End inputs:** Editable Layer; Default Prim (Prim, optional), the prim that a reference or payload without a target prim composes: a root prim, or a deeper one, which USD reads from 0.25 and on.
 - **End outputs:** Layer.
 - **Authors:** `defaultPrim`, when given, replacing the Template's.
-- **Reports:** a default prim that isn't a root prim of the layer; a sublayer of its target File that its layer doesn't sublayer, since its context checks against it ([The Zone's Stage](#the-zones-stage)); a file another zone, a Layer from File, or a Substitution Zone's begin also uses; a File that already exists and that the tree hasn't written, as a warning that Write would discard its content. The warning stops once the tree has written the file, by the front end's record of written paths ([Writing](#writing)). To keep the content, the zone writes another file, with the existing one as its Template or under it in its context; editing a file in place waits for the File In-Place Edit Zone ([Scope](#scope)).
+- **Reports:** a default prim that isn't a prim of the layer, `/` included; a default prim that's an `over` or a `class`, as a warning, since a reference composes either but an `over` defines nothing without a sublayer's `def`, and a `class` is abstract; a sublayer of its target File that its layer doesn't sublayer, since its context checks against it ([The Zone's Stage](#the-zones-stage)); a file another zone, a Layer from File, or a Substitution Zone's begin also uses; a File that already exists and that the tree hasn't written, as a warning that Write would discard its content. The warning stops once the tree has written the file, by the front end's record of written paths ([Writing](#writing)). To keep the content, the zone writes another file, with the existing one as its Template or under it in its context; editing a file in place waits for the File In-Place Edit Zone ([Scope](#scope)).
 
 **Templates.** The zone's layer starts as a copy of the Template's prims and layer metadata, and the chain authors on top. The Template is an input like any other, read live and never written, so the tree stays the source of truth and the zone's file is pure output.
 - A Template is a Layer from File, another zone's output, or a Substitution Zone's. This is how the tree duplicates a layer: the duplicate is a new zone, and its File gives it its own save path from the moment it exists, so no two zones write the same content to one file.
@@ -475,7 +475,7 @@ The Viewer isn't a zone's member and is never drawn inside one ([What a Zone Hol
 A single prim path.
 - **Properties:** Path, with a search over the prims of the stage where its output is used ([Where a Path Is Searched](#where-a-path-is-searched)).
 - **Outputs:** Prim.
-- **Reports:** a path that isn't absolute, or names a property or variant.
+- **Reports:** a path that is empty, isn't absolute, or names a property or variant. `/` is allowed, as a root prim's parent.
 
 #### Where a path is searched
 
@@ -503,8 +503,8 @@ Authors one new prim spec. Edit Prim edits prims that already exist.
 - **Inputs:** Editable Layer; Parent (Prim, default `/`); Name (String).
 - **Properties:** Specifier (`def`, `over`, `class`); Type, with a search over the schema types the process has registered (`Xform`, `Scope`, `Mesh`, `Sphere`, …), empty for a typeless prim.
 - **Outputs:** Editable Layer; Prim, the new prim's path.
-- **Authors:** the spec, and `over` specs for any ancestors its layer lacks.
-- **Reports:** a name that isn't a valid identifier; a prim this layer already has a spec for, from its Template or an earlier Create Prim. An `over` on a prim a sublayer defines is ordinary and reports nothing.
+- **Authors:** the spec, and `over` specs for any ancestors its layer lacks. An `over` an earlier Create Prim made only for a missing ancestor becomes this node's spec, with its specifier and type, in its place among its siblings, so a chain may create a child before its parent.
+- **Reports:** a name that isn't a valid identifier; a prim this layer already has a spec for, from its Template or an earlier node, an `over` a Create Prim authored as its own spec included; a Type that names no registered schema, or an abstract or API schema, as a warning. An `over` on a prim a sublayer defines is ordinary and reports nothing. A Create Prim its chain stops before reports nothing, as it doesn't run.
 
 ### Edit Prim
 

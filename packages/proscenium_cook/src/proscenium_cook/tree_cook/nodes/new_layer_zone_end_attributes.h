@@ -5,17 +5,22 @@
 
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/layer.h>
+#include <pxr/usd/sdf/path.h>
 
 #include "node_input_reader.h"
 #include "node_roles.h"
 
 namespace proscenium {
 
-struct NewLayerZoneEndInputs {};
+struct NewLayerZoneEndInputs {
+  static constexpr const char* kDefaultPrim = "inputs:defaultPrim";
+
+  PXR_NS::SdfPath defaultPrim{};
+};
 
 inline NewLayerZoneEndInputs ReadNewLayerZoneEndInputs(const NodeInputReader& reader) {
   NewLayerZoneEndInputs inputs;
-  static_cast<void>(reader);
+  inputs.defaultPrim = reader.Prim("inputs:defaultPrim");
   return inputs;
 }
 

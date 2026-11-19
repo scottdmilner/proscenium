@@ -50,11 +50,17 @@ enum class DiagnosticCode : std::uint8_t {
   kMissingBaseDirectory,  // a // path with no base directory: the .blend isn't saved
   kWorkingDirectoryPath,  // a path starting with ./ or ../, which resolves against the working directory
   // A node type's own:
-  kMissingPath,          // Layer from File: an empty Path
+  kMissingPath,          // Layer from File or Prim: an empty Path
   kFileNotFound,         // Layer from File: no file at Path
   kUnreadableFile,       // Layer from File: a file that doesn't parse as a layer
   kUnlinkedInput,        // Stage Output: nothing linked into its Layer
   kMissingStageMetrics,  // Stage Output: a root layer that authors no upAxis or metersPerUnit
+  kInvalidDefaultPrim,   // New Layer Zone: a Default Prim that isn't a prim of the zone's layer
+  kDefaultPrimNotDef,    // New Layer Zone: a Default Prim whose spec is an over or a class
+  kInvalidPrimName,      // Create Prim: a Name that isn't a valid identifier
+  kExistingPrimSpec,     // Create Prim: a prim the layer already has a spec for
+  kUnknownPrimType,      // Create Prim: a Type that names no registered schema
+  kNonConcretePrimType,  // Create Prim: a Type that names an abstract or API schema
 };
 
 // Every code the cook reports, which Python's list must hold.
@@ -92,6 +98,12 @@ inline constexpr std::array kDiagnosticCodes{
     DiagnosticCode::kUnreadableFile,
     DiagnosticCode::kUnlinkedInput,
     DiagnosticCode::kMissingStageMetrics,
+    DiagnosticCode::kInvalidDefaultPrim,
+    DiagnosticCode::kDefaultPrimNotDef,
+    DiagnosticCode::kInvalidPrimName,
+    DiagnosticCode::kExistingPrimSpec,
+    DiagnosticCode::kUnknownPrimType,
+    DiagnosticCode::kNonConcretePrimType,
 };
 
 // The code's name in Python's list, such as "unknown-node-type".

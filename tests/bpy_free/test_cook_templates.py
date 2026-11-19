@@ -174,7 +174,7 @@ def test_begin_reports_each_anchored_path_with_its_authored_form(tmp_path: Path)
         authored.extend(value if isinstance(value, list) else [value])
     expected = {_anchored(tmp_path, path): path for path in authored}
     assert len(expected) == len(authored)  # no two authored paths anchor to one string
-    assert result.node_reports["Copy"].report_data == {"anchoredPaths": expected}
+    assert result.node_reports["Copy"].report_data["anchoredPaths"] == expected
 
 
 def test_zone_from_another_zone_copies_its_layer_and_write_table(tmp_path: Path) -> None:
@@ -184,7 +184,8 @@ def test_zone_from_another_zone_copies_its_layer_and_write_table(tmp_path: Path)
     # Again's ID sorts before Copy's, so had its task run first it would have started empty.
     assert again != copy
     assert again.ExportToString() == copy.ExportToString()
-    assert result.node_reports["Again"].report_data == result.node_reports["Copy"].report_data
+    again_paths = result.node_reports["Again"].report_data["anchoredPaths"]
+    assert again_paths == result.node_reports["Copy"].report_data["anchoredPaths"]
     for node_id in ("Again", "AgainEnd", "AgainOut"):
         assert _codes(result, node_id) == [], node_id
 
