@@ -41,7 +41,7 @@ def _link(tree: Any, from_node: Any, output: str, to_node: Any, input_identifier
 
 
 def _zone_tree() -> tuple[Any, dict[str, Any]]:
-    """Begin -> Create Prim.001 (/Chair, an Xform) -> a reroute -> End -> a Stage Output and the active Viewer."""
+    """Begin -> Create Prim.001 (/Chair, an Xform) -> a reroute -> End -> a Stage Output and the chosen Viewer."""
     tree = _tree()
     nodes = {
         "begin": _node(tree, "NewLayerZoneBegin", "Begin"),
@@ -59,7 +59,7 @@ def _zone_tree() -> tuple[Any, dict[str, Any]]:
     tree.links.new(reroute.outputs[0], nodes["end"].inputs["Layer"])
     _link(tree, nodes["end"], "layer", nodes["output"], "layer")
     _link(tree, nodes["end"], "layer", nodes["viewer"], "layer")
-    tree.nodes.active = nodes["viewer"]
+    tree.viewer = "Viewer"
     return tree, nodes
 
 
@@ -149,14 +149,37 @@ def test_a_kept_cook_returns_the_same_stage(extension: ModuleType) -> None:
     assert not second.GetPrimAtPath("/Chair")
 
 
-def test_no_active_viewer_cooks_none(extension: ModuleType) -> None:
+def test_no_chosen_viewer_cooks_none(extension: ModuleType) -> None:
     del extension
     tree, nodes = _zone_tree()
-    tree.nodes.active = nodes["output"]
+    tree.viewer = ""
+    tree.nodes.active = nodes["viewer"]  # the active node doesn't choose the Viewer
     result = cook_panel.cook_tree(tree)
     assert cook_panel.active_viewer(tree) is None
     assert result.viewer_stage is None
     assert "Stage Output" in result.stage_outputs
+
+
+def test_viewer_dropdown_offers_only_viewers(extension: ModuleType) -> None:
+    del extension
+    tree, _nodes = _zone_tree()
+    _node(tree, "Viewer", "Another Viewer")
+    assert sorted(cook_node_types.viewer_names(tree)) == ["Another Viewer", "Viewer"]
+    tree.viewer = "Another Viewer"
+    assert cook_panel.active_viewer(tree) == "Another Viewer"
+
+
+def test_viewer_name_of_a_deleted_viewer_is_the_cooks_warning(extension: ModuleType) -> None:
+    del extension
+    tree, nodes = _zone_tree()
+    tree.nodes.remove(nodes["viewer"])
+    result = cook_panel.cook_tree(tree)
+    assert [d.code for d in result.tree_diagnostics] == [proscenium_cook.DiagnosticCode.UNKNOWN_VIEWER]
+    assert result.viewer_stage is None
+    layout = RecordingLayout()
+    panel: Any = SimpleNamespace(layout=layout)
+    cook_panel.PROSCENIUM_PT_cook_tree.draw(panel, SimpleNamespace(space_data=SimpleNamespace(edit_tree=tree)))
+    assert layout.labels == [("No Viewer is named 'Viewer'", "ERROR", True)]
 
 
 def test_layer_from_file_reads_its_path(extension: ModuleType, tmp_path: Path) -> None:
@@ -225,7 +248,7 @@ def test_link_through_a_reroute_is_checked_from_its_start(extension: ModuleType)
     assert not into_create.is_valid
 
 
-def test_panel_draws_the_cook_button_and_the_trees_checkbox(extension: ModuleType) -> None:
+def test_panel_draws_the_cook_button_and_the_trees_properties(extension: ModuleType) -> None:
     del extension
     tree, _nodes = _zone_tree()
     layout = RecordingLayout()
@@ -233,5 +256,6 @@ def test_panel_draws_the_cook_button_and_the_trees_checkbox(extension: ModuleTyp
     context = SimpleNamespace(space_data=SimpleNamespace(edit_tree=tree))
     cook_panel.PROSCENIUM_PT_cook_tree.draw(panel, context)
     assert [drawn.idname for drawn in layout.operators] == ["proscenium.cook_tree"]  # one button
-    assert layout.props == [cook_node_types.PRINT_TREE_LAYER_PROPERTY]  # on the tree, kept per tree
-    assert layout.labels == [("Viewer: Viewer", "HIDE_OFF", True)]
+    # Both on the tree, kept per tree.
+    assert layout.props == [cook_node_types.PRINT_TREE_LAYER_PROPERTY, cook_node_types.VIEWER_PROPERTY]
+    assert layout.labels == []  # the chosen Viewer is one

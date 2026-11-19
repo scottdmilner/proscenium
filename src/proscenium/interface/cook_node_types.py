@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 TREE_IDNAME = "ProsceniumCookTree"
 ZONE_END_PROPERTY = "zone_end"
 PRINT_TREE_LAYER_PROPERTY = "print_tree_layer"
+VIEWER_PROPERTY = "viewer"
 
 # Socket colors by socket kind, and for the value sockets Blender draws itself.
 _KIND_COLORS = {
@@ -142,6 +143,18 @@ class CookNode:
                 layout.label(text=f"{attribute.label}: {attribute.type_name} isn't editable here", icon="ERROR")
 
 
+def viewer_names(tree: Any) -> list[str]:
+    """The names of the tree's Viewer nodes, which the tree's Viewer dropdown offers."""
+    return [
+        node.name for node in tree.nodes if isinstance(node, CookNode) and node.cook_definition.type_name == "Viewer"
+    ]
+
+
+def _search_viewers(tree: Any, context: Any, edit_text: str) -> list[str]:
+    del context, edit_text  # Blender filters the names by what's typed
+    return sorted(viewer_names(tree))
+
+
 class PROSCENIUM_NT_cook_tree(bpy.types.NodeTree):  # noqa: N801 - Blender's class naming
     """A node tree the cook evaluates into USD stages."""
 
@@ -152,6 +165,10 @@ class PROSCENIUM_NT_cook_tree(bpy.types.NodeTree):  # noqa: N801 - Blender's cla
     # The Cook panel's checkbox, kept on the tree so each tree keeps its own.
     print_tree_layer: bpy.props.BoolProperty(  # ty: ignore[invalid-type-form]
         name="Print Tree Layer", description="Also print the tree's layer, as the cook reads it", default=False
+    )
+    # The Viewer the cook runs, by its node's name, which a rename doesn't follow, as a begin's end doesn't.
+    viewer: bpy.props.StringProperty(  # ty: ignore[invalid-type-form]
+        name="Viewer", description="The Viewer node the cook runs and prints", search=_search_viewers
     )
 
     @override

@@ -3,7 +3,7 @@
 Each cook writes the tree into a scratch layer and moves it into the root layer of a stage kept for that tree, which
 the tree's TreeCook holds, so the cook's state, and the stages it returns, last between cooks (docs/plans/cook-module.md
 "Input"). The kept cooks are keyed by the tree's session UID and hold no Blender data; loading a file drops them. The
-active Viewer is the tree's active node when that's a Viewer. The tree's diagnostics, each node's report, and each
+active Viewer is the one the tree's Viewer dropdown names. The tree's diagnostics, each node's report, and each
 stage the cook returns, as its root layer, are printed to the console. Nothing is handed to a binding.
 """
 
@@ -47,11 +47,11 @@ def cook_tree(tree: bpy.types.NodeTree) -> proscenium_cook.CookResult:
 
 
 def active_viewer(tree: bpy.types.NodeTree) -> str | None:
-    """The node ID of the tree's active node when it's a Viewer, else None."""
-    node: Any = tree.nodes.active
-    if isinstance(node, cook_node_types.CookNode) and node.cook_definition.type_name == "Viewer":
-        return node.name
-    return None
+    """The node ID the tree's Viewer dropdown names, else None.
+
+    A name that's no longer a Viewer's, after a delete or a rename, is still given, so the cook warns unknown-viewer.
+    """
+    return getattr(tree, cook_node_types.VIEWER_PROPERTY) or None
 
 
 def tree_stage(tree: bpy.types.NodeTree) -> Usd.Stage | None:
@@ -145,17 +145,16 @@ class PROSCENIUM_PT_cook_tree(bpy.types.Panel):  # noqa: N801 - Blender's panel 
 
     @override
     def draw(self, context: Any) -> None:
-        """The cook button, the checkbox for printing the tree's layer, and the active Viewer."""
+        """The cook button, the checkbox for printing the tree's layer, and the Viewer dropdown."""
         tree = _edited_tree(context)
         assert tree is not None  # poll
         layout: Any = self.layout
         layout.operator(PROSCENIUM_OT_cook_tree.bl_idname, icon="PLAY")
         layout.prop(tree, cook_node_types.PRINT_TREE_LAYER_PROPERTY)
+        layout.prop(tree, cook_node_types.VIEWER_PROPERTY, icon="HIDE_OFF")
         viewer = active_viewer(tree)
-        if viewer is None:
-            layout.label(text="No Viewer: make one the active node", icon="INFO")
-        else:
-            layout.label(text=f"Viewer: {viewer}", icon="HIDE_OFF")
+        if viewer is not None and viewer not in cook_node_types.viewer_names(tree):
+            layout.label(text=f"No Viewer is named {viewer!r}", icon="ERROR")
 
 
 CLASSES = (PROSCENIUM_OT_cook_tree, PROSCENIUM_PT_cook_tree)
