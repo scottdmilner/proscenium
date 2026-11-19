@@ -66,7 +66,7 @@ The cook evaluates the tree as a DAG of tasks, as [Cooking the Layers](../phase3
 | Substitution Zone end | one node | the root's anonymous copies |
 | Stage | one Stage Output or Viewer | the stage composed on its input layer |
 
-Value nodes (Prim, Match Prims, Value, Convert) aren't tasks. Each is computed when a task needs its value, once per cook, and a Prims expression is matched at the node that uses it, against that node's stage. A value node fed by a chain node, such as a Prim from another zone's Create Prim, makes its consumer's task depend on that zone's task.
+Value nodes (Prim, Match Prims, Value, Convert) aren't tasks. Each is computed once per cook, in the node graph's order, so its value is ready before any node that uses it, and a Prims expression is matched at the node that uses it, against that node's stage. A value node fed by a chain node, such as a Prim from another zone's Create Prim, makes its consumer's task depend on that zone's task.
 
 ### Edges between tasks
 
@@ -122,7 +122,7 @@ What a zone holds is decided by its chain, not by where it's drawn ([What a Zone
 | Zone | New Layer Zone, Variant Zone, Substitution Zone | Hooks the task machinery calls: where a task starts and what from, its context, and a Variant Zone's edit target. Most of a zone's behavior is the machinery's own. |
 | Task | Layer from File, Stage Output, Viewer | `TaskContext&`: a task of its own, outside any chain. |
 
-**One registry.** `node_registry.cpp` holds the one list of node types. Each entry is a type name mapped to its role's behavior: a `std::variant` of the four, with an optional upgrade function for older `node:version`s.
+**One registry.** `node_registry.cpp` holds the one list of node types. Each entry is a type name mapped to its role's behavior: a `std::variant` of the four. An upgrade function for older `node:version`s joins the entry with the first type whose version changes.
 - The definitions test compares this list with the definitions file.
 - Node types don't register themselves through static objects. If the code is ever built as a static library, the linker drops translation units that nothing references, along with their registration, and the node disappears with no error.
 
@@ -131,7 +131,7 @@ What a zone holds is decided by its chain, not by where it's drawn ([What a Zone
 **Generated inputs.** A script in `tools/` reads the definitions file through Sdf and writes a header per node type: a struct of its typed inputs and properties, and the reader that fills it.
 - **Value types:** each attribute's `SdfValueTypeName` gives its C++ type through `GetType()`.
 - **Socket kinds:** the kind in `customData` gives `SdfPath`, `SdfPathExpression`, a layer handle, or `std::vector` for a multi-input.
-- **Three-state fields** become an `AuthoredField<T>`: unauthored, set, or, for list ops, removed.
+- **Three-state fields** become an `AuthoredField<T>`: unauthored or set, and, for list ops, removed, which arrives with Edit Prim (step 11), the first node to author a removal.
 - **Dynamically typed inputs** stay `VtValue`, such as Set Attribute's Value, whose type follows its Type property, and the node checks them itself.
 - **What this buys:** renaming or retyping an input in the definitions breaks the compile of the node that reads it, and defaults are applied once, in the reader.
 - **Checked in, not generated at build time.** The headers are checked in, and a pre-commit hook fails when they're out of date, as `proscenium-matrix check` does for the matrix. Diffs then show what changed in an interface, clang-format and clang-tidy see the generated code, and the build needs no generation step.
@@ -147,7 +147,8 @@ Behavior stays in C++, never in the definitions file, so it lives in one place.
 **Each node type has:**
 - its definition;
 - its generated header;
-- one `.cpp` file with its function, its diagnostic codes, any upgrade function, and its helpers in an anonymous namespace;
+- one `.cpp` file with its function and its helpers in an anonymous namespace;
+- its diagnostic codes, in `cook_diagnostics.h` and in Python's `DiagnosticCode`, which importing the package checks against each other;
 - a line in `node_registry.cpp`;
 - its README entry.
 
@@ -174,11 +175,11 @@ A step's order follows what its tests need to build a tree: a node can't be test
 
 1. **This plan,** and the note's [Where It Lives](../phase3/node-tree.md#where-it-lives) pointing to it, in place of its sentence that Phase 3 has no plan file.
 2. **The package, empty.** `proscenium_cook` with its `pyproject.toml`, build hook, `COOK` in `tools/native_build.py`, an `_cook` that only loads, its READMEs and `AGENTS.md`, its import contracts, and a line in the root AGENTS.md's repository map. Tests: it imports without Blender's modules (`test_no_blender_imports.py`), and its wheel builds and passes the linkage audit.
-3. **Reading the tree.** The node definitions file and its loader; the four roles' signatures, the registry, and the contexts ([Node Types in C++](#node-types-in-c)); `tools/node_inputs.py` and its pre-commit hook, tested on each socket kind and value-type family with a definitions file of test-only node types; the shared checks; `TreeCook` and the result types; checking the tree against the definitions (unknown node type, newer `node:version`, unknown input or property, a connection to nothing, a link between incompatible socket kinds, a cycle); decoding node IDs from prim names; the node graph and its topological order; the scheduler, which runs tasks in that order ([Evaluating the Tree](#evaluating-the-tree)); muting from each definition's pass-through. There are no node types yet, so every tree cooks to an empty result with diagnostics. Tests: malformed trees, one diagnostic each.
+3. **Reading the tree.** The node definitions file and its loader; the four roles' signatures, the registry, and the contexts ([Node Types in C++](#node-types-in-c)); `tools/node_inputs.py` and its pre-commit hook, tested on each socket kind and value-type family with a definitions file of test-only node types; the shared checks; `TreeCook` and the result types; checking the tree against the definitions (unknown node type, newer `node:version`, unknown input or property, a connection to nothing, a link between incompatible socket kinds, a cycle); decoding node IDs from prim names; the node graph and its topological order; the scheduler, which runs tasks in that order ([Evaluating the Tree](#evaluating-the-tree)); muting from each definition's pass-through. There are no node types yet, so every tree cooks to an empty result with diagnostics. Tests: malformed trees, one diagnostic each; the generator on test-only definitions; the definitions loader on malformed ones. The checks that need a node type are built here and tested in step 4, with its first types.
 
 ### Reading files
 
-4. **Layer from File and Stage Output.** The first stage out: a Stage Output's stage composed on a file the tree reads. Adds Path properties and the `//` base directory ([The `//` Base Directory](../phase3/node-tree.md#the-tree-as-plain-data)), and the Stage Output's warning for a root layer that authors no `upAxis` or `metersPerUnit`. The Stage Output's coordinate conversion property is carried in the tree and read by the front end. The cook doesn't convert.
+4. **Layer from File and Stage Output.** The first stage out: a Stage Output's stage composed on a file the tree reads. Adds Path properties and the `//` base directory ([The `//` Base Directory](../phase3/node-tree.md#the-tree-as-plain-data)), and the Stage Output's warning for a root layer that authors no `upAxis` or `metersPerUnit`. The Stage Output's coordinate conversion property is carried in the tree and read by the front end. The cook doesn't convert. Its tests also cover step 3's checks that need a node type: a newer or missing `node:version`, an unknown attribute, a wrong attribute type, a `node:version` or `node:mute` of the wrong type, a token outside its menu, a Prims that doesn't parse, an incompatible link, too many links, muting's pass-through (also through a muted node with an error), and a node's cache, kept by its ID and type, so a new node reusing a deleted one's name starts empty.
 5. **Viewer, on a Layer.** Its stage composed on a finished layer. The Context checkbox does nothing until zones have a context (step 12), and an Editable Layer input waits for step 8.
 
 ### Authoring layers
@@ -238,8 +239,6 @@ A step's order follows what its tests need to build a tree: a node can't be test
 ## Open questions
 
 For the user to settle, each before the step named:
-- **Step 3:** the API's names (`TreeCook`, `cook`, `CookResult`, `stage_outputs`, `viewer_stages`).
-- **Step 3:** whether a node report's diagnostic codes are an enum the type stubs list, as the planner's are, or strings.
 - **Step 6:** errors in a chain pass the layer through or stop the chain ([Open Questions](../phase3/node-tree.md#open-questions)). This plan assumes they pass it through.
 - **Step 9:** the value socket count, one socket per stored type or a single Value socket ([Open Questions](../phase3/node-tree.md#open-questions)). The cook reads values by their USD types either way, so this mostly concerns the front end. The tree's format is fixed here, though.
 - **Step 12:** whether verification runs on every cook or only on request.
@@ -250,3 +249,4 @@ For the user to settle, each before the step named:
 - **Plan (2026-11-18).** The cook takes the tree as a stage, so the incremental cook can listen to it, and returns a stage for every Viewer it sees, leaving which one is active to the front end. It's a workspace member that ships only once a front end uses it. A full cook and an incremental one share one task graph and scheduler. A chain node's value output, such as Create Prim's Prim, dirties its consumers but doesn't order them, since it's computed from the node's own inputs, so an acyclic tree always gives an acyclic task graph. A New Layer Zone is never nested in another: its begin has no Editable Layer input, so each is a task of its own. Nodes come in one or two per step, in the order their tests need them, with reuse after the first composition node.
 - **All C++ (with the user, 2026-11-18).** The whole cook, nodes included, is C++, though only the composition-error mapping meets PROJECT.md's criteria today. A Python cook with C++ helpers would iterate faster, but the work after the first feature set would grow its share of the cook, and it would split each node's behavior between two languages or need a full port. Each node works through one context, which makes recorded reads and provenance hold by construction.
 - **Node types are registered functions with generated inputs (with the user, 2026-11-18).** A function per node type, with a signature per role, so value nodes are pure because of their signature, and no node can keep state outside its task's cache. A class per type would allow state on a node object, which reuse can't see. One explicit registry, since self-registering objects can vanish at link time. Typed inputs are generated from the definitions file and checked in, so an interface change breaks the compile of every node it affects. Checks every node shares run once from the definitions. Behavior isn't declared in the definitions file: most nodes need code, and declared behavior would give logic a second home that a node moves out of as it grows.
+- **Reading the tree (with the user, 2026-11-18).** The API keeps this plan's names. Diagnostic codes work as the planner's do: stable strings in C++, which a Python `StrEnum` lists, and importing the package fails when the two differ. The checks that need a node type are tested from step 4, with the first types, rather than through test-only node types or a test-only API. A definition's `customData` keys are `socket`, `multiInput`, `optional`, `dynamicType`, and, on an output, `mutePassThrough`, which `node_definitions.usda` documents. A node with an error from the shared checks doesn't run, so its outputs bring nothing downstream, and a muted node doesn't run either: its consumers read through it.

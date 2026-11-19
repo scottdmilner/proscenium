@@ -1,0 +1,108 @@
+#usda 1.0
+# Malformed node definitions, one problem each, for the cook's loader: each type is named for its problem. None has an
+# implementation, which the loader reports too.
+
+def "NotAClass"
+{
+    int node:version = 1
+}
+
+class "NoVersion"
+{
+    opaque outputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+}
+
+class "UnknownSocketKind"
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "Mesh"
+        }
+    )
+}
+
+class "LayerNotOpaque"
+{
+    int node:version = 1
+    string inputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+}
+
+class "OpaqueWithoutSocket"
+{
+    int node:version = 1
+    opaque inputs:layer
+}
+
+class "AttributeOutsideNamespaces"
+{
+    int node:version = 1
+    float size
+}
+
+class "MultiInputOutput"
+{
+    int node:version = 1
+    opaque outputs:layer (
+        customData = {
+            bool multiInput = 1
+            string socket = "Layer"
+        }
+    )
+}
+
+class "PassThroughToNothing"
+{
+    int node:version = 1
+    opaque outputs:editableLayer (
+        customData = {
+            string mutePassThrough = "inputs:editableLayer"
+            string socket = "EditableLayer"
+        }
+    )
+}
+
+class "PassThroughOtherKind"
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+    opaque outputs:editableLayer (
+        customData = {
+            string mutePassThrough = "inputs:layer"
+            string socket = "EditableLayer"
+        }
+    )
+}
+
+class "MultiInputPrim"
+{
+    int node:version = 1
+    string inputs:prims (
+        customData = {
+            bool multiInput = 1
+            string socket = "Prims"
+        }
+    )
+}
+
+class "OptionalInput"
+{
+    int node:version = 1
+    float inputs:size (
+        customData = {
+            bool optional = 1
+        }
+    )
+}

@@ -8,6 +8,17 @@ These rules cover the cook's C++. [README.md](README.md) lists what each file ho
 - The cook builds as the planner does: through `tools/native_build.py` (`COOK`), from this directory only, against the dependency headers of the Blender release `uv.lock` pins, linking only to Blender's bundled `usd_ms`. `tools/build_extension.py` builds the module (`proscenium_cook.tree_cook._cook`, ignored by `.gitignore`) into this directory, where the dev environment's editable install imports it, and `proscenium_cook`'s build hook ships it in a wheel tagged for the platform.
 - Its `CMakeLists.txt` sets the planner's flags. A change to one's flags changes the other's.
 
+## Node types
+
+A node type is a registered function in its role's signature (`node_roles.h`), never a class with state ([the plan](../../../../../docs/plans/cook-module.md#node-types-in-c)). Adding one takes, in the same change:
+- its definition, a `class` prim in `../node_definitions.usda`;
+- its input header, from `uv run python tools/node_inputs.py render`, never edited by hand;
+- one `.cpp` file in `nodes/` with its function, its diagnostic codes, and its helpers in an anonymous namespace;
+- its line in `nodes/node_registry.cpp`, and its source in `CMakeLists.txt`;
+- its entry in `nodes/README.md`.
+
+Behavior stays in C++, never in the definitions file. A node reads its inputs and properties only through its generated struct, so renaming or retyping one breaks the compile of the node that reads it.
+
 ## The planner's rules
 
 [The planner's rules](../../../../proscenium_sync/src/proscenium_sync/planner/AGENTS.md) for its boundary, its style, and its tests apply here too, with the cook's names:

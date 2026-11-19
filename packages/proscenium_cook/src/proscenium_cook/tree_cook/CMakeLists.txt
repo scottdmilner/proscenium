@@ -69,9 +69,21 @@ function(proscenium_compile_settings target)
 endfunction()
 
 Python_add_library(_cook MODULE WITH_SOABI
+  cook_diagnostics.cpp
+  node_contexts.cpp
+  node_definitions.cpp
+  node_graph.cpp
+  node_ids.cpp
+  node_input_reader.cpp
+  nodes/node_registry.cpp
   python_bindings.cpp
+  python_error_translation.cpp
+  tree_cook.cpp
+  tree_reading.cpp
 )
 proscenium_compile_settings(_cook)
+# Sources include the cook's headers from this directory, wherever they sit: "node_input_reader.h".
+target_include_directories(_cook PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 # On the interface of Blender's exported pxr Python target; match it.
 target_compile_definitions(_cook PRIVATE PXR_BOOST_PYTHON_NO_PY_SIGNATURES)
 target_link_libraries(_cook PRIVATE "${USD_LIBRARY}")

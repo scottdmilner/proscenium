@@ -63,6 +63,13 @@ repos:
         language: system
         files: ^(\.clang-tidy|packages/proscenium_sync/src/proscenium_sync/planner/(.*\.(cpp|h)|(inspection/)?CMakeLists\.txt)|packages/proscenium_cook/src/proscenium_cook/tree_cook/(.*\.(cpp|h)|CMakeLists\.txt)|tools/feasibility/hydra_bridge/(src/.*\.(cpp|h)|CMakeLists\.txt)|tools/(clang_tidy|native_build|blender_deps)\.py)$
         pass_filenames: false
+      # The cook's generated input headers match its node definitions (docs/plans/cook-module.md).
+      - id: node-inputs
+        name: node input headers
+        entry: uv run --frozen python tools/node_inputs.py check
+        language: system
+        files: ^(packages/proscenium_cook/src/proscenium_cook/(node_definitions\.usda|tree_cook/(\.clang-format|node_inputs/.*))|tools/node_inputs\.py)$
+        pass_filenames: false
       - id: matrix
         name: requirement matrix
         entry: uv run --frozen python tools/matrix.py check

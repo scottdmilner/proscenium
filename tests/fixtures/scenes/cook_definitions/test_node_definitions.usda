@@ -1,0 +1,115 @@
+#usda 1.0
+# Test-only node definitions, for tools/node_inputs.py's tests: TestSockets has an input of each socket kind,
+# TestValues a property of each value-type family the note lists (with a role, an array, and a menu), and an optional
+# and a dynamically typed input, and TestNoInputs none at all. No implementation registers these types, so the cook's
+# loader refuses them (tests/bpy_free/test_cook_node_definitions.py).
+
+class "TestSockets" (
+    doc = "One input of each socket kind, and an Editable Layer passed through when muted."
+)
+{
+    int node:version = 1
+    opaque inputs:editableLayer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+    opaque inputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+    opaque inputs:sourceLayers (
+        customData = {
+            bool multiInput = 1
+            string socket = "Layer"
+        }
+    )
+    string inputs:file (
+        customData = {
+            string socket = "File"
+        }
+    )
+    string inputs:prim = "/World" (
+        customData = {
+            string socket = "Prim"
+        }
+    )
+    string inputs:prims (
+        customData = {
+            string socket = "Prims"
+        }
+    )
+    string inputs:item:file (
+        customData = {
+            string socket = "File"
+        }
+    )
+    opaque outputs:editableLayer (
+        customData = {
+            string mutePassThrough = "inputs:editableLayer"
+            string socket = "EditableLayer"
+        }
+    )
+}
+
+class "TestValues" (
+    doc = "One property per value-type family, an optional field, and a dynamically typed input."
+)
+{
+    int node:version = 2
+    bool props:boolValue = 1
+    uchar props:ucharValue
+    int props:intValue = 3
+    uint props:uintValue
+    int64 props:int64Value
+    uint64 props:uint64Value
+    half props:halfValue
+    float props:floatValue = 0.5
+    double props:doubleValue
+    timecode props:timeCodeValue
+    string props:stringValue = "text"
+    token props:mode = "block" (
+        allowedTokens = ["value", "block"]
+    )
+    asset props:assetValue
+    half2 props:half2Value
+    float3 props:float3Value
+    double4 props:double4Value
+    int2 props:int2Value
+    point3f props:point3fValue
+    quath props:quathValue
+    quatf props:quatfValue
+    quatd props:quatdValue
+    matrix2d props:matrix2dValue
+    matrix3d props:matrix3dValue
+    matrix4d props:matrix4dValue
+    float3[] props:float3Array
+    bool props:active (
+        customData = {
+            bool optional = 1
+        }
+    )
+    token props:kind (
+        customData = {
+            bool optional = 1
+        }
+    )
+    float inputs:value (
+        customData = {
+            bool dynamicType = 1
+        }
+    )
+}
+
+class "TestNoInputs" (
+    doc = "A node type with only an output."
+)
+{
+    int node:version = 1
+    opaque outputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+}

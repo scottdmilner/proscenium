@@ -1,0 +1,7 @@
+#usda 1.0
+# A layer with no /Tree prim, only another root prim: the tree's missing-tree error, and no nodes.
+
+def NodeTree "Graph"
+{
+    int tree:format = 1
+}

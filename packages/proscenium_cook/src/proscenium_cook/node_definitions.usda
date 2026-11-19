@@ -1,0 +1,19 @@
+#usda 1.0
+(
+    """The node definitions: one class prim per node type, named for the type, which is also the type name of that
+    node's prims in a tree (docs/phase3/node-tree.md "Node definitions"). The cook loads it through Sdf, never
+    registers it with USD, and checks that each definition has an implementation in tree_cook/nodes/node_registry.cpp,
+    and the reverse; tools/node_inputs.py writes each type's input header from it.
+
+    A class prim holds `int node:version` and `doc`, and an attribute per input (inputs:), output (outputs:), and
+    property (props:), with its type and default. Menus are allowedTokens. Each attribute's customData holds what USD's
+    types can't:
+    - socket: "Layer", "EditableLayer", "File", "Prim", or "Prims"; a value socket or property has none, and its type
+      is its USD value type. Layer and EditableLayer sockets are opaque; File, Prim, and Prims are strings.
+    - multiInput: true for a Layer input that takes several links, in connection order.
+    - optional: true for a property that is unauthored unless set, which a node reads as an AuthoredField.
+    - dynamicType: true for a value whose type follows another property, which a node reads as a VtValue.
+    - mutePassThrough, on an output: the input whose value a muted node passes through it.
+
+    It defines no node types yet: the first arrive with step 4 of docs/plans/cook-module.md."""
+)

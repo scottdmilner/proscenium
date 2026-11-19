@@ -1,0 +1,50 @@
+#usda 1.0
+# Node prims whose names decode to the note's node IDs (docs/phase3/node-tree.md "The tree as plain data"):
+# Set_20_Attribute is "Set Attribute", N_2e_001 "N.001", _31_st "1st", Größe itself, a_1f600_b "a😀b", and __2e__
+# "_2e_". Two names decode to no node ID: Bad_zz_Name, whose escape isn't hex, and _41_, which escapes "A", a
+# character that needs no escape, so two prim names would stand for one node. Every type is unknown before step 4.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def SetAttribute "Set_20_Attribute"
+    {
+        int node:version = 1
+    }
+
+    def Prim "N_2e_001"
+    {
+        int node:version = 1
+    }
+
+    def Prim "_31_st"
+    {
+        int node:version = 1
+    }
+
+    def Prim "Größe"
+    {
+        int node:version = 1
+    }
+
+    def Prim "a_1f600_b"
+    {
+        int node:version = 1
+    }
+
+    def Prim "__2e__"
+    {
+        int node:version = 1
+    }
+
+    def Prim "Bad_zz_Name"
+    {
+        int node:version = 1
+    }
+
+    def Prim "_41_"
+    {
+        int node:version = 1
+    }
+}

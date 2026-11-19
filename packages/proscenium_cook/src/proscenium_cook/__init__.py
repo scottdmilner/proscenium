@@ -3,6 +3,8 @@
 Other packages use only the names this module exports.
 """
 
+from .cook_api import TreeCook
+from .cook_results import CookResult, DiagnosticCode, NodeDiagnostic, NodeReport, Severity
 from .tree_cook import usd_version
 
-__all__ = ["usd_version"]
+__all__ = ["CookResult", "DiagnosticCode", "NodeDiagnostic", "NodeReport", "Severity", "TreeCook", "usd_version"]

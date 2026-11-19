@@ -1,0 +1,7 @@
+#usda 1.0
+# A tree whose tree:format is a string, not an int: the tree's unknown-tree-format error, as if it had none.
+
+def NodeTree "Tree"
+{
+    string tree:format = "1"
+}

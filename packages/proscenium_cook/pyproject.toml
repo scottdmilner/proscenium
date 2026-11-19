@@ -32,8 +32,11 @@ include_external_packages = true  # so the bpy-free contract sees Blender's modu
 name = "proscenium_cook's import layers"
 type = "layers"
 containers = ["proscenium_cook"]
-layers = ["tree_cook"]
+layers = ["cook_api", "cook_results | tree_cook"]
 exhaustive = true
+# import-linter sees no compiled module, so it records tree_cook/__init__.py's `from ._cook import ...` as an import
+# of the root package, proscenium_cook; tree_cook imports nothing else of the package.
+ignore_imports = ["proscenium_cook.tree_cook -> proscenium_cook"]
 
 # All of the cook is bpy-free: it reads and writes USD only.
 [[tool.importlinter.contracts]]

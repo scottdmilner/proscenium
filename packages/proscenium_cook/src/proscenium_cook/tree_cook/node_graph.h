@@ -1,0 +1,43 @@
+// The node graph: one vertex per node and one edge per link (docs/plans/cook-module.md "Two graphs"). It must be
+// acyclic; each node on a cycle gets an error and takes no part in the cook. Its topological order runs upstream
+// first, with ties broken by node ID, so the order, and so the result, is the same on every cook.
+#pragma once
+
+#include <pxr/base/tf/token.h>
+#include <pxr/pxr.h>
+
+#include <cstddef>
+#include <vector>
+
+#include "cook_diagnostics.h"
+#include "tree_reading.h"
+
+namespace proscenium {
+
+// One node's output, by node index.
+struct OutputRef {
+  std::size_t node;
+  PXR_NS::TfToken attributeName;
+};
+
+class NodeGraph {
+ public:
+  // Builds the graph over tree's nodes, adding an error to each node on a cycle, and marks which nodes can run: those
+  // of a known type, off every cycle, with no error from the checks.
+  NodeGraph(TreeNodes& tree, CookDiagnostics& diagnostics);
+
+  // The nodes off every cycle, upstream first, ties broken by node ID.
+  [[nodiscard]] const std::vector<std::size_t>& Order() const { return order_; }
+
+  // The outputs an input's links bring, in connection order, each traced back through muted nodes: a muted node's
+  // output brings what its definition's pass-through input brings, even when an error keeps the node from running,
+  // and nothing when it has none. A link from an unmuted node that can't run, or from a node on a cycle, brings
+  // nothing, so it isn't listed.
+  [[nodiscard]] std::vector<OutputRef> Sources(std::size_t node, const PXR_NS::TfToken& input) const;
+
+ private:
+  const TreeNodes& tree_;
+  std::vector<std::size_t> order_;
+};
+
+}  // namespace proscenium

@@ -1,7 +1,19 @@
 // The cook's Python module, proscenium_cook.tree_cook._cook. It links only Blender's usd_ms.
+//
+// Each entry point translates errors as python_error_translation.h describes. A cook's result crosses as plain Python
+// data, which proscenium_cook.cook_api turns into the package's own types; paths cross as strings.
+#include <pxr/base/tf/token.h>
 #include <pxr/pxr.h>
 
+#include <memory>
 #include <pxr/external/boost/python.hpp>
+#include <string>
+#include <utility>
+
+#include "cook_diagnostics.h"
+#include "node_definitions.h"
+#include "python_error_translation.h"
+#include "tree_cook.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -13,10 +25,73 @@ namespace {
 // The OpenUSD release the module was compiled against, comparable with the host's pxr.Usd.GetVersion().
 bp::tuple UsdVersion() { return bp::make_tuple(PXR_MAJOR_VERSION, PXR_MINOR_VERSION, PXR_PATCH_VERSION); }
 
+bp::list DiagnosticCodes() {
+  bp::list codes;
+  for (const DiagnosticCode code : kDiagnosticCodes) codes.append(std::string(DiagnosticCodeName(code)));
+  return codes;
+}
+
+std::shared_ptr<NodeDefinitions> LoadNodeDefinitions(const std::string& path) {
+  return Guarded([&] { return std::make_shared<NodeDefinitions>(path); });
+}
+
+bp::list TypeNames(const NodeDefinitions& definitions) {
+  bp::list names;
+  for (const TfToken& name : definitions.TypeNames()) names.append(name.GetString());
+  return names;
+}
+
+std::shared_ptr<TreeCook> NewTreeCook(const UsdStageRefPtr& treeStage, const std::string& baseDirectory,
+                                      const std::shared_ptr<NodeDefinitions>& definitions) {
+  return Guarded([&] { return std::make_shared<TreeCook>(treeStage, baseDirectory, definitions); });
+}
+
+// A diagnostic as (severity, code, message, source_path), source_path empty for none.
+bp::tuple DiagnosticTuple(const NodeDiagnostic& diagnostic) {
+  return bp::make_tuple(std::string(SeverityName(diagnostic.severity)),
+                        std::string(DiagnosticCodeName(diagnostic.code)), diagnostic.message,
+                        diagnostic.sourcePath.GetString());
+}
+
+bp::list DiagnosticTuples(const std::vector<NodeDiagnostic>& diagnostics) {
+  bp::list tuples;
+  for (const NodeDiagnostic& diagnostic : diagnostics) tuples.append(DiagnosticTuple(diagnostic));
+  return tuples;
+}
+
+bp::dict Stages(const std::map<std::string, UsdStageRefPtr>& stages) {
+  bp::dict byNode;
+  for (const auto& [nodeId, stage] : stages) byNode[nodeId] = stage;
+  return byNode;
+}
+
+// The result as a dict of stage_outputs, viewer_stages, node_reports (node ID to (diagnostics, report_data)), and
+// tree_diagnostics.
+bp::dict Cook(TreeCook& cook) {
+  const CookResult result = Guarded([&] { return cook.Cook(); });
+  bp::dict reports;
+  for (const auto& [nodeId, report] : result.nodeReports) {
+    reports[nodeId] = bp::make_tuple(DiagnosticTuples(report.diagnostics), report.reportData);
+  }
+  bp::dict out;
+  out["stage_outputs"] = Stages(result.stageOutputs);
+  out["viewer_stages"] = Stages(result.viewerStages);
+  out["node_reports"] = reports;
+  out["tree_diagnostics"] = DiagnosticTuples(result.treeDiagnostics);
+  return out;
+}
+
 }  // namespace
 }  // namespace proscenium
 
 PXR_BOOST_PYTHON_MODULE(_cook) {
   using namespace proscenium;
   bp::def("usd_version", &UsdVersion);
+  bp::def("diagnostic_codes", &DiagnosticCodes);
+  bp::class_<NodeDefinitions, std::shared_ptr<NodeDefinitions>, bp::noncopyable>("NodeDefinitions", bp::no_init)
+      .def("__init__", bp::make_constructor(&LoadNodeDefinitions))
+      .def("type_names", &TypeNames);
+  bp::class_<TreeCook, std::shared_ptr<TreeCook>, bp::noncopyable>("TreeCook", bp::no_init)
+      .def("__init__", bp::make_constructor(&NewTreeCook))
+      .def("cook", &Cook);
 }
