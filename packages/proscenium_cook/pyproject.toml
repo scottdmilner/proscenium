@@ -1,0 +1,48 @@
+[project]
+name = "proscenium_cook"
+version = "0.1.0"
+description = "The cook: evaluates a node tree, given as a USD stage, into a stage for each output and viewer node"
+license = "MIT"
+requires-python = ">=3.13"
+# pxr comes with Blender, so nothing ships.
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/proscenium_cook"]
+# Each directory's README and agent instructions, for developers, and the cook's sources and dotfiles: only its
+# module ships.
+exclude = ["README.md", "AGENTS.md", "CLAUDE.md", ".*", "*.cpp", "*.h", "CMakeLists.txt"]
+
+# Builds the cook's module and tags the wheel for this platform (hatch_build.py).
+[tool.hatch.build.targets.wheel.hooks.custom]
+
+# This package's import rules (README.md#import-rules), which `lint-imports --config` checks with this file (pre-commit).
+# The root pyproject.toml holds the rules between packages. Every import counts, at module level, in functions, and
+# under TYPE_CHECKING, and the layers contract follows chains of imports too.
+[tool.importlinter]
+root_package = "proscenium_cook"
+include_external_packages = true  # so the bpy-free contract sees Blender's modules
+
+# The import layers, highest first. Exhaustive: a module beside the units that no import layer lists fails.
+[[tool.importlinter.contracts]]
+name = "proscenium_cook's import layers"
+type = "layers"
+containers = ["proscenium_cook"]
+layers = ["tree_cook"]
+exhaustive = true
+
+# All of the cook is bpy-free: it reads and writes USD only.
+[[tool.importlinter.contracts]]
+name = "proscenium_cook imports no Blender module"
+type = "forbidden"
+source_modules = ["proscenium_cook"]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+
+[[tool.importlinter.contracts]]
+name = "A unit's modules import each other without cycles"
+type = "acyclic_siblings"
+ancestors = ["proscenium_cook.*"]

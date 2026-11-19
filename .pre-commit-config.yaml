@@ -23,7 +23,7 @@ repos:
       # The import rules (packages/README.md#import-rules): the [tool.importlinter] contracts of each library package's
       # pyproject.toml, and of the root's, which holds the extension's and those between packages. import-linter 2.16
       # reads one configuration a run, so each file has a hook; its next release takes several in one run, and these
-      # three become one: `lint-imports --no-cache pyproject.toml packages/*/pyproject.toml`. --no-cache: its cache can
+      # four become one: `lint-imports --no-cache pyproject.toml packages/*/pyproject.toml`. --no-cache: its cache can
       # miss an edit made just after a run, and every run takes under a second without it.
       - id: import-linter
         name: lint-imports (the extension and between packages)
@@ -43,18 +43,25 @@ repos:
         language: system
         files: ^packages/proscenium_ui/(.*\.py|pyproject\.toml)$
         pass_filenames: false
-      # The C++ of the planner (proscenium_sync's planner/) and the Hydra bridge (tools/feasibility/hydra_bridge/).
-      # Each has its own .clang-format; clang-tidy's checks are the root .clang-tidy, which covers both.
+      - id: import-linter-cook
+        name: lint-imports (proscenium_cook)
+        entry: uv run --frozen lint-imports --no-cache --config packages/proscenium_cook/pyproject.toml
+        language: system
+        files: ^packages/proscenium_cook/(.*\.py|pyproject\.toml)$
+        pass_filenames: false
+      # The C++ of the planner (proscenium_sync's planner/), the cook (proscenium_cook's tree_cook/), and the Hydra
+      # bridge (tools/feasibility/hydra_bridge/). Each has its own .clang-format; clang-tidy's checks are the root
+      # .clang-tidy, which covers all three.
       - id: clang-format
         name: clang-format
         entry: uv run --frozen clang-format -i
         language: system
-        files: ^(packages/proscenium_sync/src/proscenium_sync/planner|tools/feasibility/hydra_bridge/src)/.*\.(cpp|h)$
+        files: ^(packages/proscenium_sync/src/proscenium_sync/planner|packages/proscenium_cook/src/proscenium_cook/tree_cook|tools/feasibility/hydra_bridge/src)/.*\.(cpp|h)$
       - id: clang-tidy
         name: clang-tidy
         entry: uv run --frozen python tools/clang_tidy.py
         language: system
-        files: ^(\.clang-tidy|packages/proscenium_sync/src/proscenium_sync/planner/(.*\.(cpp|h)|(inspection/)?CMakeLists\.txt)|tools/feasibility/hydra_bridge/(src/.*\.(cpp|h)|CMakeLists\.txt)|tools/(clang_tidy|native_build|blender_deps)\.py)$
+        files: ^(\.clang-tidy|packages/proscenium_sync/src/proscenium_sync/planner/(.*\.(cpp|h)|(inspection/)?CMakeLists\.txt)|packages/proscenium_cook/src/proscenium_cook/tree_cook/(.*\.(cpp|h)|CMakeLists\.txt)|tools/feasibility/hydra_bridge/(src/.*\.(cpp|h)|CMakeLists\.txt)|tools/(clang_tidy|native_build|blender_deps)\.py)$
         pass_filenames: false
       - id: matrix
         name: requirement matrix

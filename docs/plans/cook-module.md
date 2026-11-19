@@ -238,7 +238,7 @@ A step's order follows what its tests need to build a tree: a node can't be test
 ## Open questions
 
 For the user to settle, each before the step named:
-- **Step 2:** the API's names (`TreeCook`, `cook`, `CookResult`, `stage_outputs`, `viewer_stages`) and the C++ directory's (`tree_cook/`).
+- **Step 3:** the API's names (`TreeCook`, `cook`, `CookResult`, `stage_outputs`, `viewer_stages`).
 - **Step 3:** whether a node report's diagnostic codes are an enum the type stubs list, as the planner's are, or strings.
 - **Step 6:** errors in a chain pass the layer through or stop the chain ([Open Questions](../phase3/node-tree.md#open-questions)). This plan assumes they pass it through.
 - **Step 9:** the value socket count, one socket per stored type or a single Value socket ([Open Questions](../phase3/node-tree.md#open-questions)). The cook reads values by their USD types either way, so this mostly concerns the front end. The tree's format is fixed here, though.
