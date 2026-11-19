@@ -6,8 +6,9 @@
     and the reverse; tools/node_attributes.py writes each type's attribute header from it.
 
     A class prim holds `int node:version` and `doc`, and an attribute per input (inputs:), output (outputs:), and
-    property (props:), with its type and default. Menus are allowedTokens. Each attribute's customData holds what USD's
-    types can't:
+    property (props:), with its type and default. A zone's begin and end name each other in the class prim's
+    customData: `zone`, "begin" or "end", and `zonePartner`, the other's type. A begin's prims in a tree name their end
+    with `rel zone:end`. Menus are allowedTokens. Each attribute's customData holds what USD's types can't:
     - socket: "Layer", "EditableLayer", "File", "Prim", or "Prims"; a value socket or property has none, and its type
       is its USD value type. Layer and EditableLayer sockets are opaque; File, Prim, and Prims are strings.
     - multiInput: true for a Layer input that takes several links, in connection order.
@@ -65,5 +66,49 @@ class "Viewer" (
     bool props:context = 1 (
         doc = """Composes a New Layer Zone's layer over the zone's context; any other layer has none, and is
         composed alone."""
+    )
+}
+
+class "NewLayerZoneBegin" (
+    customData = {
+        string zone = "begin"
+        string zonePartner = "NewLayerZoneEnd"
+    }
+    doc = """Begins a New Layer Zone: a new layer, authored by the zone's chain, which Write saves to File. Its
+    Editable Layer starts empty."""
+)
+{
+    int node:version = 1
+    string inputs:file = "" (
+        customData = {
+            string socket = "File"
+        }
+        doc = "Where Write saves the zone's layer, `//` relative to the .blend."
+    )
+    opaque outputs:layer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+}
+
+class "NewLayerZoneEnd" (
+    customData = {
+        string zone = "end"
+        string zonePartner = "NewLayerZoneBegin"
+    }
+    doc = "Ends a New Layer Zone: its Layer is the zone's finished layer, as its chain authored it."
+)
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+    opaque outputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
     )
 }

@@ -13,7 +13,7 @@ These rules cover the cook's C++. [README.md](README.md) lists what each file ho
 A node type is a registered function in its role's signature (`node_roles.h`), never a class with state ([the plan](../../../../../docs/plans/cook-module.md#node-types-in-c)). Adding one takes, in the same change:
 - its definition, a `class` prim in `../node_definitions.usda`;
 - its attribute header beside it in `nodes/`, from `uv run python tools/node_attributes.py render`, never edited by hand;
-- one `.cpp` file in `nodes/` with its function and its helpers in an anonymous namespace, and its function's declaration in `nodes/node_types.h`;
+- one `.cpp` file in `nodes/` with its function and its helpers in an anonymous namespace, and its function's declaration in `nodes/node_types.h`. A zone's begin and end share one file, since each is half of one zone;
 - its diagnostic codes, in `cook_diagnostics.h` and in Python's `DiagnosticCode`, which importing the package checks against each other;
 - its line in `nodes/node_registry.cpp`, and its source in `CMakeLists.txt`;
 - its entry in `nodes/README.md`.

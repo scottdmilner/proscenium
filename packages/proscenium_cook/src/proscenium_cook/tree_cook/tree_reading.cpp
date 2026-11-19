@@ -176,7 +176,8 @@ void CheckAgainstDefinition(const TreeNode& node, CookDiagnostics& diagnostics) 
     if (IsNodeOwnAttribute(name)) continue;
     const SdfAttributeSpecHandle attribute = TfDynamic_cast<SdfAttributeSpecHandle>(property);
     if (!attribute) {
-      if (name != "zone:end") {  // a begin node names its end; step 6 of the plan checks the pairs
+      // A zone's begin names its end; FindZones checks the pairs.
+      if (name != "zone:end" || node.definition->zone != ZoneEdge::kBegin) {
         diagnostics.AddNode(node.id, Severity::kError, DiagnosticCode::kUnknownAttribute,
                             node.typeName.GetString() + " has no relationship " + name, property->GetPath());
       }

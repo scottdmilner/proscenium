@@ -14,6 +14,13 @@
 
 namespace proscenium {
 
+// A graph's vertices in topological order, upstream first, by Kahn's algorithm: of the vertices ready, the lowest index
+// goes first, so vertices indexed in node-ID order break ties by node ID. downstream holds each vertex's downstream
+// vertices. A vertex skip marks, and its edges, take no part; skip is empty when none do. A vertex on a cycle that
+// isn't skipped, and any vertex downstream of one, is left out.
+std::vector<std::size_t> TopologicalOrder(const std::vector<std::vector<std::size_t>>& downstream,
+                                          const std::vector<bool>& skip = {});
+
 // One node's output, by node index.
 struct OutputRef {
   std::size_t node;

@@ -47,6 +47,14 @@ class DiagnosticCode(StrEnum):
     CYCLE = "cycle"  # a node on a cycle of links
     NO_UPSTREAM_VALUE = "no-upstream-value"  # a link that brings nothing: its node failed, can't run, or is muted
     USD_ERROR = "usd-error"  # a USD error a node raised while it ran, which it doesn't report as its own
+    # A zone's:
+    UNPAIRED_ZONE = "unpaired-zone"  # a begin whose zone:end names no end of its zone, or an end no one begin names
+    CHAIN_BRANCH = "chain-branch"  # an Editable Layer output linked to more than one input
+    BROKEN_CHAIN = "broken-chain"  # an end its begin's chain doesn't reach
+    MISMATCHED_ZONE = "mismatched-zone"  # an end another begin's chain reaches
+    UNREACHED_ZONE_END = "unreached-zone-end"  # a chain node on a chain that never reaches its end
+    NO_CHAIN = "no-chain"  # an authoring node whose Editable Layer doesn't trace back to a begin
+    SHARED_FILE = "shared-file"  # two zones that save to one file
     # A Path property's:
     MISSING_BASE_DIRECTORY = "missing-base-directory"  # a // path with no base directory: the .blend isn't saved
     WORKING_DIRECTORY_PATH = "working-directory-path"  # a ./ or ../ path, which resolves against the working directory

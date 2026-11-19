@@ -1,7 +1,7 @@
 // The contexts a node's function gets, one per role (node_roles.h). A node reaches the tree, its stage, and its layer
 // only through its context: its inputs with the definitions' defaults for unauthored ones, its diagnostics, and its
 // cache (docs/plans/cook-module.md "The package"). Each role's context gains what that role reaches as the plan's
-// steps add it: a chain's stage and scratch layer arrive with step 6.
+// steps add it: a chain node's scratch layer arrives with step 8, and its zone's stage with step 9.
 #pragma once
 
 #include <pxr/base/tf/token.h>
@@ -122,7 +122,8 @@ class ValueInputs final : public NodeContext {
   using NodeContext::NodeContext;
 };
 
-// One step of a zone's chain. Its zone's stage and scratch layer arrive with step 6.
+// One step of a zone's chain, which runs inside its zone's task. Its scratch layer arrives with the first authoring
+// node, step 8 of the plan, and its zone's stage with step 9.
 class AuthoringContext final : public NodeContext {
  public:
   using NodeContext::NodeContext;

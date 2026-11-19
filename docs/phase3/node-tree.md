@@ -81,10 +81,11 @@ A New Layer Zone or a Variant Zone holds its chain ([Layers as Values](#layers-a
 
 Errors, each following from the chain:
 - **A branch:** an Editable Layer output linked to two inputs, other than the active Viewer, reported on the node that branches.
-- **A broken chain:** the path from a begin doesn't reach its end, because it dead-ends or the end's input comes from another chain, which is also how an Editable Layer crossing into another zone appears. The end reports it, and each node past the break reports that its edits never reach the end.
+- **A broken chain:** the path from a begin doesn't reach its end, because it dead-ends or the end's input comes from another chain, which is also how an Editable Layer crossing into another zone appears. The end reports it, and each node on the begin's chain warns that its edits never reach the end.
 - **An authoring node in no chain:** its Editable Layer input is unlinked or doesn't trace back to a begin. It reports it, and the nodes after it pass nothing on.
 - **Overlapping zones:** pairs on one chain must nest as brackets, so begin 1, begin 2, end 1, end 2 is an error on both pairs. A Variant Zone whose begin isn't on a New Layer Zone's chain is an error.
 - **A mismatched pair:** an end that the chain of a begin other than its own reaches. Pairs are named by a relationship ([The Tree as Plain Data](#the-tree-as-plain-data)), not by structure, so this is checked.
+- **An unpaired begin or end:** a begin whose `zone:end` doesn't name one end of its kind, or names one that another begin names too, and an end that no one begin names.
 - **A Substitution Zone's own errors** are on its begin and its end ([Substitution Zone](#substitution-zone)). A New Layer Zone nested in one can hold a Variant Zone, and a Substitution Zone never sits on a chain.
 
 Muted nodes stay on their chain and pass their Editable Layer through.
@@ -246,7 +247,7 @@ So an attribute's type change is changed info, not a resync, and a change to a l
 ### Diagnostics
 
 Each node reports its own errors and warnings on itself.
-- A node with an error passes its Editable Layer through unchanged, and the nodes after it run, so the rest of the result still shows.
+- An error in a chain stops it: the zone gives no layer out, the nodes after the one with the error don't run, and the zone's end warns, naming it. A layer with an edit missing never reaches a stage as if it were whole. A muted node isn't an error: it stays on its chain and passes its Editable Layer through.
 - Composition errors (`UsdStage::GetCompositionErrors`), such as an unresolved asset path or a relocate USD rejects, are reported on the node that authored the arc ([Provenance](#provenance)). An arc in a file the tree reads reports on the Layer from File node or Substitution Zone begin that reads it.
 - Verification warnings from a Stage Output's stage are reported on the node whose edit is hidden ([The Zone's Stage](#the-zones-stage)).
 - Write refuses while any node that some Stage Output depends on has an error, so a file never holds a result with an edit missing. Errors on nodes with no path of links to a Stage Output don't block Write.
@@ -710,7 +711,7 @@ def NodeTree "Tree"
 - A changed base directory is a change to every node with a `//` path.
 - Any other path goes to USD's resolver as written, so a custom resolver's identifiers work. A path starting with `./` or `../` (or `.\` or `..\`) warns, since it would resolve against the process's working directory. A bare relative path doesn't, since it may be such an identifier.
 
-**Node definitions.** Each node type is defined once, in a node definitions file (such as `node_definitions.usda`) shipped in the package, with one `class` prim per node type, named for the type, which is also the type name of that node's prims in a tree. Each holds the type's `node:version`, its `doc`, and its `inputs:`, `outputs:`, and `props:` attributes with their types and defaults. Menus are `allowedTokens`, and `customData` holds what USD's types can't: the socket kind (`Layer`, `EditableLayer`, `File`, `Prim`, `Prims`), multi-input, what a muted node passes through, a zone node's role and partner, and Blender UI hints.
+**Node definitions.** Each node type is defined once, in a node definitions file (such as `node_definitions.usda`) shipped in the package, with one `class` prim per node type, named for the type, which is also the type name of that node's prims in a tree. Each holds the type's `node:version`, its `doc`, and its `inputs:`, `outputs:`, and `props:` attributes with their types and defaults. Menus are `allowedTokens`, and `customData` holds what USD's types can't: the socket kind (`Layer`, `EditableLayer`, `File`, `Prim`, `Prims`), multi-input, what a muted node passes through, a zone node's role and partner (`zone`, `"begin"` or `"end"`, and `zonePartner`, in the class prim's own `customData`), and Blender UI hints.
 - Both sides load it as data through Sdf, and neither registers it with USD. The front end builds its node classes from it when the extension registers. The cook checks trees against it and reads an unauthored value as the definition's default, so a tree authors only what differs.
 - Behavior is in C++ only, and a test checks that each definition has an implementation and the reverse. Front-end behavior the file can't declare, such as Set Attribute's Value socket following its Type, or dynamic menus, is a Python hook on that node type.
 - **Not a registered schema.** The cook reads the tree through Sdf, which never consults USD's schema registry, so a schema's fallbacks wouldn't reach it anyway. Registration is also unreliable: **Checked** with a codeless schema, `Plug.Registry().RegisterPlugins` found its types when it ran before anything used the schema registry, and didn't find them when a stage had been opened first, though registration reported success; an extension enabled mid-session always registers late. The registered definition also returned no `customData`.
@@ -843,4 +844,3 @@ Following "Phase 3 ordering", the cook can be written and tested without `bpy` a
 - **Verification:** whether it runs on every cook or only on request. It looks up only the zone's own edits ([Provenance](#provenance)), but each output stage it looks them up in composes the whole stage.
 - **Coordinate conversion:** whether the editor's Stage Outputs request the binding's conversion on. The spec's default is off, and the editor's choice as a caller changes nothing in the spec.
 - **Rereading layers the tree doesn't own:** when another department updates `anim.usda`, the user rereads it on request ([Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading)). Does the request live on the Layer from File node, for every layer its stage composes, or on each layer?
-- **Errors in a chain:** pass the layer through, as above, or stop the chain?

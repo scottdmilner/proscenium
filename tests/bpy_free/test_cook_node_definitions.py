@@ -18,8 +18,15 @@ SHIPPED_DEFINITIONS = Path(proscenium_cook.__file__).parent / "node_definitions.
 
 
 def test_shipped_definitions_match_the_registry() -> None:
-    # Loading checks each definition against the registry and the reverse: step 4's types (docs/plans/cook-module.md).
-    assert NodeDefinitions(str(SHIPPED_DEFINITIONS)).type_names() == ["LayerFromFile", "StageOutput", "Viewer"]
+    # Loading checks each definition against the registry and the reverse, and that a zone's begin and end, and only
+    # they, have a zone's implementation: step 6's types (docs/plans/cook-module.md).
+    assert NodeDefinitions(str(SHIPPED_DEFINITIONS)).type_names() == [
+        "LayerFromFile",
+        "NewLayerZoneBegin",
+        "NewLayerZoneEnd",
+        "StageOutput",
+        "Viewer",
+    ]
 
 
 def test_definitions_without_implementations_are_refused(tmp_path: Path) -> None:
@@ -44,6 +51,12 @@ def test_definitions_without_implementations_are_refused(tmp_path: Path) -> None
         ("OptionalInput", "only a property is optional"),
         ("PassThroughToNothing", "mutePassThrough names no input"),
         ("PassThroughOtherKind", "mutePassThrough names an input of another kind or type"),
+        ("TwoEditableLayerInputs", "a node has at most one Editable Layer input"),
+        ("ZoneUnknownEdge", 'customData zone must be "begin" or "end"'),
+        ("ZoneWithoutPartner", "a zone's begin or end names its zonePartner"),
+        ("PartnerWithoutZone", "only a zone's begin or end has a zonePartner"),
+        ("ZonePartnerMissing", "zonePartner Nowhere names no definition"),
+        ("ZonePartnerSameEdge", "must be the zone's other end, naming this type as its partner"),
     ],
 )
 def test_malformed_definition_names_its_problem(tmp_path: Path, type_name: str, problem: str) -> None:

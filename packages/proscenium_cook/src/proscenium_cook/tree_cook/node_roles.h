@@ -7,12 +7,15 @@
 #include <pxr/base/tf/token.h>
 #include <pxr/base/vt/value.h>
 #include <pxr/pxr.h>
+#include <pxr/usd/sdf/layer.h>
 
+#include <string>
 #include <unordered_map>
 #include <variant>
 
 namespace proscenium {
 
+class NodeContext;
 class ValueInputs;
 class AuthoringContext;
 class TaskContext;
@@ -32,9 +35,21 @@ struct AuthoringRole {
   void (*author)(AuthoringContext& context) = nullptr;
 };
 
-// New Layer Zone, Variant Zone, and Substitution Zone: hooks the task machinery calls. Their hooks arrive with the
-// first zone, step 6 of the plan.
-struct ZoneRole {};
+// The file a zone's layer is saved to, and the attribute that names it.
+struct ZoneFile {
+  std::string identifier;  // as USD's resolver identifies a new file; empty for none
+  PXR_NS::TfToken attributeName;
+};
+
+// A zone's begin or end, paired by its definition's zone and zonePartner: hooks the task machinery calls, each null for
+// a type that needs none. Most of a zone's behavior is the machinery's own: its chain (zone_chains.h), its task, and
+// its layer (tree_cook.cpp).
+struct ZoneRole {
+  // A begin's: the file Write saves its zone's layer to. A problem with it is the begin's error, which stops its zone.
+  ZoneFile (*file)(const NodeContext& context) = nullptr;
+  // An end's: its outputs, given its zone's finished layer.
+  ValueOutputs (*outputs)(const PXR_NS::SdfLayerHandle& layer) = nullptr;
+};
 
 // Layer from File, Stage Output, and Viewer: a task of its own, outside any chain.
 struct TaskRole {

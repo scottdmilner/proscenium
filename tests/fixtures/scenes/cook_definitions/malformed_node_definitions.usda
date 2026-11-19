@@ -106,3 +106,75 @@ class "OptionalInput"
         }
     )
 }
+
+class "TwoEditableLayerInputs"
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+    opaque inputs:other (
+        customData = {
+            string socket = "EditableLayer"
+        }
+    )
+}
+
+class "ZoneUnknownEdge" (
+    customData = {
+        string zone = "middle"
+    }
+)
+{
+    int node:version = 1
+}
+
+class "ZoneWithoutPartner" (
+    customData = {
+        string zone = "begin"
+    }
+)
+{
+    int node:version = 1
+}
+
+class "PartnerWithoutZone" (
+    customData = {
+        string zonePartner = "ZonePairEnd"
+    }
+)
+{
+    int node:version = 1
+}
+
+class "ZonePartnerMissing" (
+    customData = {
+        string zone = "begin"
+        string zonePartner = "Nowhere"
+    }
+)
+{
+    int node:version = 1
+}
+
+class "ZonePartnerSameEdge" (
+    customData = {
+        string zone = "begin"
+        string zonePartner = "ZonePartnerSameEdgeToo"
+    }
+)
+{
+    int node:version = 1
+}
+
+class "ZonePartnerSameEdgeToo" (
+    customData = {
+        string zone = "begin"
+        string zonePartner = "ZonePartnerSameEdge"
+    }
+)
+{
+    int node:version = 1
+}

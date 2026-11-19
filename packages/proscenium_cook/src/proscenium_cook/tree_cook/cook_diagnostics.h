@@ -38,6 +38,14 @@ enum class DiagnosticCode : std::uint8_t {
   kCycle,                   // a node on a cycle of links
   kNoUpstreamValue,         // a link that brings nothing, from a node that failed, can't run, or is muted
   kUsdError,                // a USD error the node raised while it ran, which it doesn't report as its own
+  // A zone's (docs/phase3/node-tree.md "What a zone holds"):
+  kUnpairedZone,      // a begin whose zone:end names no end of its zone, or an end no one begin names
+  kChainBranch,       // an Editable Layer output linked to more than one input
+  kBrokenChain,       // an end its begin's chain doesn't reach
+  kMismatchedZone,    // an end another begin's chain reaches
+  kUnreachedZoneEnd,  // a chain node on a chain that never reaches its end
+  kNoChain,           // an authoring node whose Editable Layer doesn't trace back to a begin
+  kSharedFile,        // two zones that save to one file
   // A Path property's (docs/phase3/node-tree.md "The tree as plain data"):
   kMissingBaseDirectory,  // a // path with no base directory: the .blend isn't saved
   kWorkingDirectoryPath,  // a path starting with ./ or ../, which resolves against the working directory
@@ -70,6 +78,13 @@ inline constexpr std::array kDiagnosticCodes{
     DiagnosticCode::kCycle,
     DiagnosticCode::kNoUpstreamValue,
     DiagnosticCode::kUsdError,
+    DiagnosticCode::kUnpairedZone,
+    DiagnosticCode::kChainBranch,
+    DiagnosticCode::kBrokenChain,
+    DiagnosticCode::kMismatchedZone,
+    DiagnosticCode::kUnreachedZoneEnd,
+    DiagnosticCode::kNoChain,
+    DiagnosticCode::kSharedFile,
     DiagnosticCode::kMissingBaseDirectory,
     DiagnosticCode::kWorkingDirectoryPath,
     DiagnosticCode::kMissingPath,

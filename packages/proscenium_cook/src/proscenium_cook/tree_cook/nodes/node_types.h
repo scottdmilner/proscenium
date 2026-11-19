@@ -7,7 +7,12 @@
 namespace proscenium {
 
 void RunLayerFromFile(TaskContext& context);  // layer_from_file.cpp
-void RunStageOutput(TaskContext& context);    // stage_output.cpp
-void RunViewer(TaskContext& context);         // viewer.cpp
+
+// new_layer_zone.cpp: the begin's file, and the end's outputs.
+ZoneFile NewLayerZoneFile(const NodeContext& context);
+ValueOutputs NewLayerZoneOutputs(const PXR_NS::SdfLayerHandle& layer);
+
+void RunStageOutput(TaskContext& context);  // stage_output.cpp
+void RunViewer(TaskContext& context);       // viewer.cpp
 
 }  // namespace proscenium

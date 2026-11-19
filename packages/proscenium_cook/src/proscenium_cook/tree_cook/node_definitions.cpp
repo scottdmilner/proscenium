@@ -14,6 +14,7 @@
 #include <set>
 #include <stdexcept>
 #include <utility>
+#include <variant>
 
 #include "nodes/node_registry.h"
 
@@ -152,11 +153,63 @@ void CheckPassThroughs(const NodeDefinition& definition, std::vector<std::string
   }
 }
 
+// A node has at most one Editable Layer input and one output, so its chain is a single path.
+void CheckEditableLayers(const NodeDefinition& definition, std::vector<std::string>& problems) {
+  for (const AttributeRole role : {AttributeRole::kInput, AttributeRole::kOutput}) {
+    const auto count = std::count_if(definition.attributes.begin(), definition.attributes.end(),
+                                     [&](const AttributeDefinition& attribute) {
+                                       return attribute.role == role && attribute.kind == SocketKind::kEditableLayer;
+                                     });
+    if (count > 1) {
+      problems.push_back(definition.typeName.GetString() + ": a node has at most one Editable Layer " +
+                         (role == AttributeRole::kInput ? "input" : "output"));
+    }
+  }
+}
+
+// The class prim's zone and zonePartner: a zone's begin or end, which names the other end's type.
+void ReadZone(const SdfPrimSpecHandle& prim, NodeDefinition& definition, std::vector<std::string>& problems) {
+  const VtDictionary customData = prim->GetCustomData();
+  const std::string& type = definition.typeName.GetString();
+  const std::string zone = ReadString(customData, "zone", type, problems);
+  definition.zonePartner = TfToken(ReadString(customData, "zonePartner", type, problems));
+  if (zone == "begin") {
+    definition.zone = ZoneEdge::kBegin;
+  } else if (zone == "end") {
+    definition.zone = ZoneEdge::kEnd;
+  } else if (!zone.empty()) {
+    problems.push_back(type + R"(: customData zone must be "begin" or "end")");
+  }
+  if (definition.zone != ZoneEdge::kNone && definition.zonePartner.IsEmpty()) {
+    problems.push_back(type + ": a zone's begin or end names its zonePartner");
+  }
+  if (definition.zone == ZoneEdge::kNone && !definition.zonePartner.IsEmpty()) {
+    problems.push_back(type + ": only a zone's begin or end has a zonePartner");
+  }
+}
+
+// Each zone node's partner is the other end of its zone, and names it back.
+void CheckZonePartners(const std::unordered_map<TfToken, NodeDefinition, TfToken::HashFunctor>& definitions,
+                       std::vector<std::string>& problems) {
+  for (const auto& [typeName, definition] : definitions) {
+    if (definition.zone == ZoneEdge::kNone || definition.zonePartner.IsEmpty()) continue;
+    const auto partner = definitions.find(definition.zonePartner);
+    const std::string where = typeName.GetString() + ": zonePartner " + definition.zonePartner.GetString();
+    if (partner == definitions.end()) {
+      problems.push_back(where + " names no definition");
+    } else if (partner->second.zone == ZoneEdge::kNone || partner->second.zone == definition.zone ||
+               partner->second.zonePartner != typeName) {
+      problems.push_back(where + " must be the zone's other end, naming this type as its partner");
+    }
+  }
+}
+
 NodeDefinition ReadDefinition(const SdfPrimSpecHandle& prim, std::vector<std::string>& problems) {
   NodeDefinition definition;
   definition.typeName = prim->GetNameToken();
   definition.doc = prim->GetDocumentation();
   const std::string& type = definition.typeName.GetString();
+  ReadZone(prim, definition, problems);
   if (prim->GetSpecifier() != SdfSpecifierClass) problems.push_back(type + ": a definition must be a class prim");
   if (!prim->GetNameChildren().empty()) problems.push_back(type + ": a definition holds no prims");
   for (const SdfPropertySpecHandle& property : prim->GetProperties()) {
@@ -182,6 +235,7 @@ NodeDefinition ReadDefinition(const SdfPrimSpecHandle& prim, std::vector<std::st
   }
   if (definition.version == 0) problems.push_back(type + ": node:version must be an int of at least 1");
   CheckPassThroughs(definition, problems);
+  CheckEditableLayers(definition, problems);
   return definition;
 }
 
@@ -202,6 +256,14 @@ const AttributeDefinition* NodeDefinition::FindAttribute(const TfToken& attribut
   return found == attributes.end() ? nullptr : &*found;
 }
 
+const AttributeDefinition* NodeDefinition::EditableLayer(AttributeRole role) const {
+  const auto found =
+      std::find_if(attributes.begin(), attributes.end(), [&](const AttributeDefinition& attributeDefinition) {
+        return attributeDefinition.role == role && attributeDefinition.kind == SocketKind::kEditableLayer;
+      });
+  return found == attributes.end() ? nullptr : &*found;
+}
+
 NodeDefinitions::NodeDefinitions(const std::string& path) {
   const SdfLayerRefPtr layer = SdfLayer::FindOrOpen(path);
   if (!layer) throw std::invalid_argument("Can't read the node definitions file " + path);
@@ -210,10 +272,16 @@ NodeDefinitions::NodeDefinitions(const std::string& path) {
     NodeDefinition definition = ReadDefinition(prim, problems);
     definitions_.emplace(definition.typeName, std::move(definition));
   }
+  CheckZonePartners(definitions_, problems);
   std::set<std::string> registered;
   for (const NodeRegistration& registration : NodeRegistry()) registered.insert(registration.typeName);
   for (const auto& [typeName, definition] : definitions_) {
-    if (registered.count(typeName.GetString()) == 0) problems.push_back(typeName.GetString() + ": no implementation");
+    const NodeRegistration* registration = FindNodeRegistration(typeName.GetText());
+    if (registration == nullptr) {
+      problems.push_back(typeName.GetString() + ": no implementation");
+    } else if ((definition.zone != ZoneEdge::kNone) != std::holds_alternative<ZoneRole>(registration->behavior)) {
+      problems.push_back(typeName.GetString() + ": a zone's begin or end, and only one, has a zone's implementation");
+    }
   }
   for (const std::string& typeName : registered) {
     if (definitions_.count(TfToken(typeName)) == 0) problems.push_back(typeName + ": no definition");

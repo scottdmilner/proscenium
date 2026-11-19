@@ -1,0 +1,122 @@
+#usda 1.0
+# New Layer Zones' files (docs/phase3/node-tree.md "Writing"). First and Second name one file, spelled two ways, so each
+# has an error, which stops its zone; Third has a file of its own. NoFile and NoFileToo name none, so they share
+# nothing. Muted is muted, so its zone gives nothing out.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def NewLayerZoneBegin "First"
+    {
+        int node:version = 1
+        string inputs:file = "//shared.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/FirstEnd>
+    }
+
+    def NewLayerZoneEnd "FirstEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/First.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "FirstOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/FirstEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "Second"
+    {
+        int node:version = 1
+        string inputs:file = "//sub/../shared.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/SecondEnd>
+    }
+
+    def NewLayerZoneEnd "SecondEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Second.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Third"
+    {
+        int node:version = 1
+        string inputs:file = "//third.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/ThirdEnd>
+    }
+
+    def NewLayerZoneEnd "ThirdEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Third.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "ThirdOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/ThirdEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "NoFile"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/NoFileEnd>
+    }
+
+    def NewLayerZoneEnd "NoFileEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/NoFile.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "NoFileOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/NoFileEnd.outputs:layer>
+    }
+
+    def NewLayerZoneBegin "NoFileToo"
+    {
+        int node:version = 1
+        opaque outputs:layer
+        rel zone:end = </Tree/NoFileTooEnd>
+    }
+
+    def NewLayerZoneEnd "NoFileTooEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/NoFileToo.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def NewLayerZoneBegin "Muted"
+    {
+        int node:version = 1
+        bool node:mute = 1
+        string inputs:file = "//muted.usda"
+        opaque outputs:layer
+        rel zone:end = </Tree/MutedEnd>
+    }
+
+    def NewLayerZoneEnd "MutedEnd"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Muted.outputs:layer>
+        opaque outputs:layer
+    }
+
+    def StageOutput "MutedOut"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/MutedEnd.outputs:layer>
+    }
+}

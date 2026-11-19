@@ -43,6 +43,31 @@ bool OnCycle(std::size_t node, const Adjacency& downstream) {
 
 }  // namespace
 
+std::vector<std::size_t> TopologicalOrder(const std::vector<std::vector<std::size_t>>& downstream,
+                                          const std::vector<bool>& skip) {
+  const std::size_t count = downstream.size();
+  const auto skipped = [&](std::size_t vertex) { return !skip.empty() && skip[vertex]; };
+  std::vector<std::size_t> upstreamCount(count, 0);
+  for (std::size_t vertex = 0; vertex < count; ++vertex) {
+    if (skipped(vertex)) continue;
+    for (const std::size_t consumer : downstream[vertex]) ++upstreamCount[consumer];
+  }
+  std::set<std::size_t> ready;
+  for (std::size_t vertex = 0; vertex < count; ++vertex) {
+    if (!skipped(vertex) && upstreamCount[vertex] == 0) ready.insert(vertex);
+  }
+  std::vector<std::size_t> order;
+  while (!ready.empty()) {
+    const std::size_t vertex = *ready.begin();
+    ready.erase(ready.begin());
+    order.push_back(vertex);
+    for (const std::size_t consumer : downstream[vertex]) {
+      if (!skipped(consumer) && --upstreamCount[consumer] == 0) ready.insert(consumer);
+    }
+  }
+  return order;
+}
+
 NodeGraph::NodeGraph(TreeNodes& tree, CookDiagnostics& diagnostics) : tree_(tree) {
   const Adjacency downstream = Downstream(tree);
   const std::size_t count = tree.nodes.size();
@@ -53,24 +78,7 @@ NodeGraph::NodeGraph(TreeNodes& tree, CookDiagnostics& diagnostics) : tree_(tree
     diagnostics.AddNode(tree.nodes[node].id, Severity::kError, DiagnosticCode::kCycle,
                         "The node is on a cycle of links, so it can't be ordered", tree.nodes[node].spec->GetPath());
   }
-  // Kahn's algorithm over the nodes off every cycle; nodes are in node-ID order, so the lowest index is ready first.
-  std::vector<std::size_t> upstreamCount(count, 0);
-  for (std::size_t node = 0; node < count; ++node) {
-    if (cyclic[node]) continue;
-    for (const std::size_t consumer : downstream[node]) ++upstreamCount[consumer];
-  }
-  std::set<std::size_t> ready;
-  for (std::size_t node = 0; node < count; ++node) {
-    if (!cyclic[node] && upstreamCount[node] == 0) ready.insert(node);
-  }
-  while (!ready.empty()) {
-    const std::size_t node = *ready.begin();
-    ready.erase(ready.begin());
-    order_.push_back(node);
-    for (const std::size_t consumer : downstream[node]) {
-      if (!cyclic[consumer] && --upstreamCount[consumer] == 0) ready.insert(consumer);
-    }
-  }
+  order_ = TopologicalOrder(downstream, cyclic);
   for (std::size_t node = 0; node < count; ++node) {
     TreeNode& treeNode = tree.nodes[node];
     treeNode.onCycle = cyclic[node];

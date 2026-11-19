@@ -47,6 +47,20 @@ const char* DiagnosticCodeName(DiagnosticCode code) {
       return "no-upstream-value";
     case DiagnosticCode::kUsdError:
       return "usd-error";
+    case DiagnosticCode::kUnpairedZone:
+      return "unpaired-zone";
+    case DiagnosticCode::kChainBranch:
+      return "chain-branch";
+    case DiagnosticCode::kBrokenChain:
+      return "broken-chain";
+    case DiagnosticCode::kMismatchedZone:
+      return "mismatched-zone";
+    case DiagnosticCode::kUnreachedZoneEnd:
+      return "unreached-zone-end";
+    case DiagnosticCode::kNoChain:
+      return "no-chain";
+    case DiagnosticCode::kSharedFile:
+      return "shared-file";
     case DiagnosticCode::kMissingBaseDirectory:
       return "missing-base-directory";
     case DiagnosticCode::kWorkingDirectoryPath:

@@ -41,15 +41,23 @@ struct AttributeDefinition {
   PXR_NS::TfToken mutePassThrough;     // for an output: the input a muted node passes through it; empty for none
 };
 
+// Which end of a zone a node type is, from its definition's customData zone; kNone for a node that isn't one.
+enum class ZoneEdge : std::uint8_t { kNone, kBegin, kEnd };
+
 // One node type's definition.
 struct NodeDefinition {
   PXR_NS::TfToken typeName;  // the class prim's name, and the type name of the type's prims in a tree
   int version = 0;           // its node:version, the newest a tree may author
   std::string doc;
+  ZoneEdge zone = ZoneEdge::kNone;
+  PXR_NS::TfToken zonePartner;                  // a zone node's: the other end's type; empty for kNone
   std::vector<AttributeDefinition> attributes;  // in the order the definition authors them
 
   // The attribute with this name, or null when the type has none.
   [[nodiscard]] const AttributeDefinition* FindAttribute(const PXR_NS::TfToken& attributeName) const;
+
+  // The node's Editable Layer input or output, the link its chain follows; null when it has none.
+  [[nodiscard]] const AttributeDefinition* EditableLayer(AttributeRole role) const;
 };
 
 // Every node type's definition, keyed by type name.

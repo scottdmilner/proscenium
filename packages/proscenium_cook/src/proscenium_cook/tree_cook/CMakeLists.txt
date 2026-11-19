@@ -77,13 +77,16 @@ Python_add_library(_cook MODULE WITH_SOABI
   node_input_reader.cpp
   nodes/composed_stage.cpp
   nodes/layer_from_file.cpp
+  nodes/new_layer_zone.cpp
   nodes/node_registry.cpp
   nodes/stage_output.cpp
   nodes/viewer.cpp
   python_bindings.cpp
   python_error_translation.cpp
+  task_graph.cpp
   tree_cook.cpp
   tree_reading.cpp
+  zone_chains.cpp
 )
 proscenium_compile_settings(_cook)
 # Sources include the cook's headers from this directory, wherever they sit: "node_input_reader.h".
