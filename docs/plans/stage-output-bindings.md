@@ -17,11 +17,12 @@ The work runs over several commits, so it goes in a worktree of its own, branche
 
 Step 1 settles how removal works (`synchronization/binding_removal.py`):
 
-- **Refusals.** Removal refuses, changing nothing, while the ledger, the manifest, the generation or the last attempt can't be read, since it would delete them ([Schema Versions](../spec/lifecycle.md#schema-versions)). It refuses a binding that isn't usable as the other operations do.
+- **Refusals.** Removal refuses, changing nothing, while the ledger, the binding index, the manifest, the generation or the last attempt can't be read, since it would change them ([Schema Versions](../spec/lifecycle.md#schema-versions)). It refuses a binding that isn't usable as the other operations do. It also refuses a binding with copies, even though one is canonical: the copies' records would make the binding a candidate again, and copies are never deleted automatically ([Copied Bindings](../spec/source-access.md#copied-bindings)).
 - **What it removes.** The content the manifest names and the binding's own leftovers in the ledger go through `synchronization/datablock_removal.py`'s `remove_unused`, the removal that cleanup and retirement share. The leftovers are the binding's managed content too, so removal disposes of them and resolves their entries. A leftover that fails again keeps its ledger key and code with a fresh diagnostic, as a retry gives it. One anything else uses is released intact (OWN-15).
 - **Objects are unlinked first.** The managed objects are unlinked from the destination before their users are read, as publication unlinks what retirement removes. Otherwise, once a view layer has bases, the Scene counts as a user of every object in the destination, and everything would be released instead of removed. Each object released intact is linked again. A leftover stays unlinked, so it's inactive.
 - **The destination goes only when nothing else needs it.** It's removed, taking the binding's records with it, when it then holds nothing and only the collections and scenes linking it, and the binding index's entry, use it. Otherwise only the binding's records come off, and it stays as an ordinary collection. Removing it would break the collection links of unmanaged content linked into it (OWN-07).
-- **The binding index's entry stays** on its Text, as a removed destination's does.
+- **The binding index's entry is removed,** as [Canonical Candidate](../spec/source-access.md#canonical-candidate) says, so no entry names a destination that stays without the binding's records.
+- **The scenes' stored source selections keep the binding's entries,** reported unresolved, as a removed destination's are. Undoing the removal resolves them again.
 - **Docs:** the matrix rows (OWN-14, API-08) get this plan's delivery and their oracles. The bindings README lists the call, and M11's milestone says what remains of its Remove binding work.
 
 ### The Stage Output node
@@ -51,7 +52,7 @@ On each cook, for each Stage Output, keyed by node ID:
 - **A copied tree** names no bindings of its own, since the copies' nodes are cleared (open question 3). Its record starts empty, so it removes nothing the original made.
 - **Deleting a whole tree** leaves its bindings in their scenes as ordinary bindings. The user can remove each one through the binding UI.
 - **The binding UI** gets a Remove button that calls the new removal call, so a binding left behind can be removed without deleting its collection by hand.
-- **A binding that isn't usable can't be removed,** whether its configuration can't be read or it's a copy with no canonical candidate. Removal refuses it, as the other operations do, so the binding UI shows why and offers no Remove button. That's accepted until M11's repair work (make a new binding, or detach): until then, the user deletes a disabled copy's collection by hand, which removes it with its records ([Removed Destination](../spec/lifecycle.md#removed-destination)).
+- **A binding that isn't usable can't be removed,** whether its configuration can't be read or it's a copy with no canonical candidate. Removal refuses it, as the other operations do, so the binding UI shows why and offers no Remove button. **Nor can a binding with copies,** though its canonical candidate is usable: the binding UI offers it Synchronize, but no Remove button, and says why. That's accepted until M11's repair work (make a new binding, or detach): until then, the user deletes a copy's collection by hand, which removes it with its records ([Removed Destination](../spec/lifecycle.md#removed-destination)).
 
 ### Reload
 

@@ -112,6 +112,22 @@ def test_a_disabled_binding_shows_why_and_no_button(bindings: Bindings) -> None:
     assert icon == "UNLINKED" and error_icon == "ERROR" and reason.startswith("Copies with no canonical candidate")
 
 
+def test_a_binding_with_copies_has_no_remove_button(bindings: Bindings) -> None:
+    # A copy of the destination, with the index's entry keeping the original canonical: the binding still synchronizes,
+    # but removal refuses it while the copy's records remain, so the panel says so and offers no remove button.
+    handle = bindings.create_binding(_scene(), name="Shot")
+    _scene().collection.children.link(bpy.data.collections["Shot"].copy())
+    layout = _drawn()
+    [button] = _synchronize_buttons(layout)
+    assert button.properties == {"binding_id": handle.binding_id}
+    assert not _remove_buttons(layout)
+    assert layout.labels == [
+        ("Shot", "UNLINKED", True),
+        ("Not synchronized", "NONE", True),
+        ("Has copies, so it can't be removed", "INFO", True),
+    ]
+
+
 def test_the_button_synchronizes_and_pushes_no_step_of_its_own(bindings: Bindings, tmp_path: Path) -> None:
     # The operator synchronizes at the scene's current frame, and declares no UNDO, since the API pushes the step; a
     # failure reports the first diagnostic as an error, which a script calling it sees raised.

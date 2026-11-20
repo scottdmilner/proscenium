@@ -46,7 +46,8 @@ class DiagnosticCode(StrEnum):
     NO_ATTACHED_STAGE = "no-attached-stage"
     SOURCE_CONFIRMATION_REQUIRED = "source-confirmation-required"  # an attachment's root-layer identifier changed
     UNSUPPORTED_RECORD = "unsupported-record"  # a record the binding's operation needs can't be read
-    COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
+    # The binding has copies and no canonical candidate, or has copies its removal would leave (source-access.md).
+    COPIED_BINDING = "copied-binding"
     EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the planner's errors included
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
     NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source or scale changed since

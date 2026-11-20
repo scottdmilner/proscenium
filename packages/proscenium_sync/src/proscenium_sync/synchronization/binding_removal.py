@@ -1,7 +1,9 @@
 """Removing a binding: its managed content, then its configuration (lifecycle.md#ownership-and-lifecycle, OWN-14).
 
-Removal needs no USD access. It refuses, changing nothing, while a record it would remove or the pending-cleanup ledger
-can't be read (lifecycle.md#schema-versions). Otherwise it commits, in this order:
+Removal needs no USD access. It refuses, changing nothing, while a record it would remove, the binding index, or the
+pending-cleanup ledger can't be read (lifecycle.md#schema-versions). It refuses a binding with copies too, though one
+is canonical: the copies' records would make the binding a candidate again, and removal never deletes a copy
+(source-access.md#copied-bindings). Otherwise it commits, in this order:
 
 1. The binding's managed content, those its manifest names and its own leftovers in the ledger, goes through
    datablock_removal.remove_unused, as disposal, retirement, and a cleanup retry do, with the destination and the
@@ -14,12 +16,14 @@ can't be read (lifecycle.md#schema-versions). Otherwise it commits, in this orde
    unlinked, so it's inactive. The ledger is
    on the binding index's Text, which outlives the configuration, so no disposal work is orphaned
    (lifecycle.md#lifecycle-failure-safety). A ledger write that fails raises, as a defect.
-3. The destination is removed, which takes the binding's records with it, when it then holds nothing and nothing but
-   the collections and scenes linking it, and the binding index's entry, uses it. Otherwise the binding's records are
-   removed from it, and it stays, an ordinary collection, with the unmanaged content linked into it and any content
-   released intact (OWN-07).
+3. The binding index's entry is removed (source-access.md#canonical-candidate), so no entry names a destination
+   that stays without the binding's records.
+4. The destination is removed, which takes the binding's records with it, when it then holds nothing and nothing but
+   the collections and scenes linking it uses it. Otherwise the binding's records are removed from it, and it stays,
+   an ordinary collection, with the unmanaged content linked into it and any content released intact (OWN-07).
 
-The binding index's entry stays on its Text, as a removed destination's does (lifecycle.md#removed-destination).
+The scenes' stored source selections keep the binding's entries, reported unresolved, as a removed destination's are
+(interaction-contract.md); undoing the removal resolves them again.
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ import bpy
 
 from proscenium_sync.persistence import binding_records, binding_state, cleanup_ledgers, id_property_records, manifests
 from proscenium_sync.results import Diagnostic, DiagnosticCode, Result
-from proscenium_sync.runtime import kept_manifests, pending_cleanup
+from proscenium_sync.runtime import copy_detection, kept_manifests, pending_cleanup
 
 from . import cleanup_retry, datablock_removal
 
@@ -75,6 +79,7 @@ def remove_binding(found: FoundBinding) -> RemovalOutcome:
         pending[entry.diagnostic.pending_resource_key] = entry
     pending_cleanup.set_ledger_entries(pending, resolved)  # a failure is a defect, and raises
     kept_manifests.remove_manifest(destination)  # the record, and the entry kept by the destination's session uid
+    binding_records.remove_index_entry(binding_id)  # the index was read, so only a defect raises
     if not _remove_destination(destination, text):
         _remove_records(binding_id, destination)
     diagnostics = [e.diagnostic for _, e in sorted(pending.items())]
@@ -84,16 +89,20 @@ def remove_binding(found: FoundBinding) -> RemovalOutcome:
 def _checked_records(
     binding_id: BindingId, destination: bpy.types.Collection
 ) -> tuple[manifests.Manifest, cleanup_ledgers.Ledger, bpy.types.Text] | Diagnostic:
-    """The manifest, the ledger, and its Text; or why one of those, or a record removal deletes, can't be read.
+    """The manifest, the ledger, and its Text; or why removal refuses: a record it changes can't be read, or copies.
 
     An empty manifest for a binding with none yet, and an empty ledger for a file with none yet.
     """
+    if (copies := _copies(binding_id)) is not None:
+        return copies
     try:
         text, stored = pending_cleanup.trackable_ledger()
     except ValueError as error:  # no binding index, or two: neither ledger authorizes disposal
         return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, str(error))
     except id_property_records.RefusedRecordError as error:
         return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, error.refused.message)
+    if isinstance(index := binding_records.read_index(text), id_property_records.RefusedRecord):
+        return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, index.message)
     manifest = kept_manifests.read_manifest(destination)
     for record in (manifest, binding_state.read_generation(destination), binding_state.read_last_attempt(destination)):
         if isinstance(record, id_property_records.RefusedRecord):
@@ -101,6 +110,20 @@ def _checked_records(
     assert not isinstance(manifest, id_property_records.RefusedRecord)  # refused above
     ledger = cleanup_ledgers.Ledger({}) if stored is None else stored.record
     return manifests.Manifest({}) if manifest is None else manifest.record, ledger, text
+
+
+def _copies(binding_id: BindingId) -> Diagnostic | None:
+    """The refusal of a binding with copies, naming its candidates, or None for a binding with none."""
+    identity = copy_detection.candidates_for_binding(binding_id)
+    if identity is None or len(identity.candidates) == 1:
+        return None
+    report = copy_detection.copied_binding_report(binding_id, identity)
+    named = ", ".join(
+        f"{c.scene_name or 'no scene'}/{c.destination_name}{' (canonical)' if c.is_canonical else ''}"
+        for c in report.candidates
+    )
+    message = f"Binding {binding_id} has copies, which removal doesn't delete: {named}"
+    return Diagnostic(DiagnosticCode.COPIED_BINDING, binding_id, message)
 
 
 def _unlink_managed_objects[K](
@@ -135,7 +158,7 @@ def _pending_entry(
 def _remove_destination(destination: bpy.types.Collection, text: bpy.types.Text) -> bool:
     """Remove the destination if it holds nothing and only what links it uses it; whether it's gone.
 
-    The binding index's Text, whose entry names it, isn't a use.
+    The binding index's Text, which holds the ledger, isn't a use.
     """
     if destination.objects or destination.children:
         return False

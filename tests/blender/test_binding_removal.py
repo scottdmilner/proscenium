@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
     from proscenium_sync.bindings import BindingHandle, Bindings
     from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -72,6 +73,14 @@ def _ledger() -> dict[str, LedgerEntry]:
     return {} if ledger is None else dict(ledger.record.entries)
 
 
+def _index_entries() -> set[BindingId]:
+    """The identifiers the binding index has entries for."""
+    [text] = binding_records.index_texts()
+    index = binding_records.read_index(text)
+    assert isinstance(index, id_property_records.LoadedRecord)
+    return set(index.record.destinations)
+
+
 def _key(datablock: bpy.types.ID) -> tuple[str, str]:
     """A datablock by kind and name, since an object and its bounds mesh share a name."""
     return type(datablock).__name__, datablock.name
@@ -83,7 +92,7 @@ def _names() -> set[tuple[str, str]]:
 
 def test_removal_removes_the_content_and_the_destination(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-14: removal removes the binding's configuration and managed content; its destination, left empty, goes with
-    # its records, and no scene lists the binding.
+    # its records, its index entry is removed (source-access.md#canonical-candidate), and no scene lists the binding.
     with incremental.unmanaged_user(tmp_path) as scene:
         before = _names()
         handle = _synchronized(bindings, scene.root_layer_path)
@@ -94,6 +103,7 @@ def test_removal_removes_the_content_and_the_destination(bindings: Bindings, tmp
         assert _names() == before
         assert bindings.in_scene(_scene()) == []
         assert _ledger() == {}
+        assert _index_entries() == set()
 
 
 def test_a_removed_bindings_handles_raise_except_release(bindings: Bindings, tmp_path: Path) -> None:
@@ -223,6 +233,41 @@ def test_a_ledger_that_cant_be_read_refuses_removal(bindings: Bindings, tmp_path
         assert bindings.in_scene(_scene()) == [handle]
 
 
+def test_an_index_that_cant_be_read_refuses_removal(bindings: Bindings, tmp_path: Path) -> None:
+    # SCHEMA-03, SCHEMA-06: removal removes the binding's index entry, so an index that can't be read refuses it,
+    # changing nothing.
+    with incremental.unmanaged_user(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.root_layer_path)
+        [text] = binding_records.index_texts()
+        text[id_property_records.NAMESPACE][binding_records.INDEX_KEY][id_property_records.VERSION_KEY] = 2  # newer
+        names = _names()
+        result = handle.remove()
+        assert result.state is ResultState.FATAL_FAILURE
+        [diagnostic] = result.diagnostics
+        assert diagnostic.code is DiagnosticCode.UNSUPPORTED_RECORD
+        assert _names() == names
+        assert bindings.in_scene(_scene()) == [handle]
+
+
+def test_a_binding_with_copies_refuses_removal(bindings: Bindings, tmp_path: Path) -> None:
+    # COPY-04: a copy of the destination, linked into the scene, is a second candidate, and the index's entry keeps the
+    # original canonical. Removal never deletes a copy, and the copy's records would make the binding a candidate again,
+    # so it refuses, naming both, and changes nothing.
+    with incremental.unmanaged_user(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.root_layer_path)
+        copy = bpy.data.collections["Shot"].copy()
+        _scene().collection.children.link(copy)
+        names, records = _names(), sorted(id_property_records.keys(copy))
+        result = handle.remove()
+        assert result.state is ResultState.FATAL_FAILURE
+        [diagnostic] = result.diagnostics
+        assert diagnostic.code is DiagnosticCode.COPIED_BINDING
+        assert "Scene/Shot (canonical)" in diagnostic.message and f"Scene/{copy.name}" in diagnostic.message
+        assert (_names(), sorted(id_property_records.keys(copy))) == (names, records)
+        assert bindings.in_scene(_scene()) == [handle]
+        assert _index_entries() == {handle.binding_id}
+
+
 def test_a_removal_is_one_undo_step(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # UNDO-08: a removal that commits is one undo step; undo restores the binding with its records and content, and
     # redo removes them again.
@@ -278,23 +323,36 @@ def _protect_the_destination() -> None:
     bpy.data.collections["Shot"].use_fake_user = True
 
 
-@pytest.mark.parametrize("use", [_instance_the_destination, _protect_the_destination], ids=["instanced", "fake-user"])
-def test_a_destination_something_uses_stays_without_records(
-    bindings: Bindings, tmp_path: Path, use: Callable[[], None]
-) -> None:
-    # OWN-07: a destination an unmanaged empty instances, or a fake user protects, stays, empty and without records;
-    # the binding's content and configuration are removed.
+def _removed_keeping_the_destination(bindings: Bindings, root: Path, use: Callable[[], None]) -> bpy.types.Collection:
+    """Synchronize, give the destination a use, and remove the binding; the destination, which stays.
+
+    It stays empty and without records, the binding's content and configuration are removed, and its index entry too,
+    so none names a collection without the binding's records.
+    """
+    handle = _synchronized(bindings, root)
+    managed = _managed(handle)
+    use()
+    assert handle.remove().state is ResultState.SUCCESS
+    destination = bpy.data.collections["Shot"]
+    assert (list(destination.objects), id_property_records.keys(destination)) == ([], [])
+    assert not any(id_property_records.alive(d) for d in managed.values())
+    assert bindings.in_scene(_scene()) == []
+    assert _index_entries() == set()
+    return destination
+
+
+def test_an_instanced_destination_stays_without_records(bindings: Bindings, tmp_path: Path) -> None:
+    # OWN-07: a destination an unmanaged empty instances stays, still instanced.
     with incremental.unmanaged_user(tmp_path) as scene:
-        handle = _synchronized(bindings, scene.root_layer_path)
-        managed = _managed(handle)
-        use()
-        assert handle.remove().state is ResultState.SUCCESS
-        destination = bpy.data.collections["Shot"]
-        assert (list(destination.objects), id_property_records.keys(destination)) == ([], [])
-        assert not any(id_property_records.alive(d) for d in managed.values())
-        if "Instancer" in bpy.data.objects:
-            assert bpy.data.objects["Instancer"].instance_collection == destination
-        assert bindings.in_scene(_scene()) == []
+        destination = _removed_keeping_the_destination(bindings, scene.root_layer_path, _instance_the_destination)
+        assert bpy.data.objects["Instancer"].instance_collection == destination
+
+
+def test_a_protected_destination_stays_without_records(bindings: Bindings, tmp_path: Path) -> None:
+    # OWN-07: a destination a fake user protects stays.
+    with incremental.unmanaged_user(tmp_path) as scene:
+        destination = _removed_keeping_the_destination(bindings, scene.root_layer_path, _protect_the_destination)
+        assert destination.use_fake_user
 
 
 def test_a_destination_that_cant_be_removed_stays_without_records(
@@ -331,6 +389,7 @@ def test_undo_restores_the_records_on_a_destination_that_stayed(
         undo.undo()
         assert (_names(), bindings.in_scene(_scene())) == (names, [handle])
         assert sorted(id_property_records.keys(bpy.data.collections["Shot"])) == records
+        assert _index_entries() == {handle.binding_id}
         assert {_key(d) for d in _managed(handle).values()} == managed
         undo.redo()
         assert bindings.in_scene(_scene()) == []
