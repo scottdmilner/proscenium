@@ -38,6 +38,7 @@ class FoundBinding:
     config: BindingConfig | None  # its configuration, if it is usable
     configuration_refusal: RefusedRecord | None  # why its configuration can't be read, if it can't
     disabled_candidate_report: CopiedBinding | None  # its candidates, and why none is canonical, if it is disabled
+    has_copies: bool = False  # whether its identity has more than one candidate, canonical or not
 
     @property
     def usable(self) -> bool:
@@ -156,9 +157,9 @@ def _record_belongs_to_scene(record: BindingRecord, scene: bpy.types.Scene) -> b
 def _binding_from_candidates(binding_id: BindingId, identity: IdentityCandidates) -> FoundBinding:
     """Build a binding lookup result from its candidates and canonical decision."""
     if (record := identity.canonical_record()) is None:
-        return FoundBinding(
-            binding_id, None, None, None, None, copy_detection.copied_binding_report(binding_id, identity)
-        )
+        report = copy_detection.copied_binding_report(binding_id, identity)
+        return FoundBinding(binding_id, None, None, None, None, report, has_copies=True)
+    has_copies = len(identity.candidates) > 1
     if isinstance(record.config, RefusedRecord):
-        return FoundBinding(binding_id, record.collection, None, None, record.config, None)
-    return FoundBinding(binding_id, record.collection, record.scene, record.config, None, None)
+        return FoundBinding(binding_id, record.collection, None, None, record.config, None, has_copies)
+    return FoundBinding(binding_id, record.collection, record.scene, record.config, None, None, has_copies)

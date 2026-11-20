@@ -67,6 +67,10 @@ class ShownDisplays:
         """Keep no binding's display, so the next call of each builds it."""
         self._kept_by_binding.clear()
 
+    def forget(self, binding_id: BindingId) -> None:
+        """Keep no display of the binding, as once it's removed."""
+        self._kept_by_binding.pop(binding_id, None)
+
     def shown(
         self,
         binding_id: BindingId,

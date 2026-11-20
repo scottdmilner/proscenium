@@ -46,7 +46,8 @@ class DiagnosticCode(StrEnum):
     NO_ATTACHED_STAGE = "no-attached-stage"
     SOURCE_CONFIRMATION_REQUIRED = "source-confirmation-required"  # an attachment's root-layer identifier changed
     UNSUPPORTED_RECORD = "unsupported-record"  # a record the binding's operation needs can't be read
-    COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
+    # The binding has copies and no canonical candidate, or has copies its removal would leave (source-access.md).
+    COPIED_BINDING = "copied-binding"
     EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the planner's errors included
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
     NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source or scale changed since
@@ -60,6 +61,7 @@ class DiagnosticCode(StrEnum):
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
     CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
+    REMOVAL_FAILED = "removal-failed"  # removing a binding couldn't remove a managed resource, so it's pending cleanup
     # The destination is also linked into a scene whose unit scale differs from the target scene's, which the display
     # is planned for (transforms.md#coordinate-conversion).
     CAPTURE_MISMATCH = "capture-mismatch"  # an incremental capture differed from a full re-read (verification mode)
@@ -106,6 +108,7 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.RETIREMENT_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.CLEANUP_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.REMOVAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.PROJECTIVE_TRANSFORM: (DiagnosticCategory.APPROXIMATION, Severity.WARNING),
     DiagnosticCode.UNSUPPORTED_INSTANCING: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
     DiagnosticCode.INVALID_INSTANCER: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),

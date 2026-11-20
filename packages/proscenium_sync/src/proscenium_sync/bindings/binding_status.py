@@ -1,8 +1,8 @@
 """What a panel shows of each of a scene's bindings, in one call (M7 plan, F2).
 
 Bindings.binding_statuses(scene) gives, for each binding the scene lists, its destination's name, why it can't be used
-if it can't, whether a stage is attached, whether its display may be out of date, and how its last attempt ended. A
-panel calls it once per draw, rather than the API once per value per binding.
+if it can't, whether it has copies, whether a stage is attached, whether its display may be out of date, and how its
+last attempt ended. A panel calls it once per draw, rather than the API once per value per binding.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ class BindingStatus:
     binding_id: BindingId
     name: str | None  # its destination's name; None for a binding disabled by its copies, which has none
     refusal: str | None  # why it can't be used, a configuration that can't be read or copies, or None if it can
+    has_copies: bool  # whether its identity has copies, though one may be canonical, so removal refuses it
     attached: bool  # whether a caller's stage is attached
     possibly_out_of_date: bool  # whether its display may not show its source as it is now; True if it can't be used
     published: bool  # whether its destination shows a published generation
@@ -70,6 +71,7 @@ def binding_statuses(bindings: ProcessBindings, scene: bpy.types.Scene) -> list[
                 binding_id=found.binding_id,
                 name=None if destination is None else destination.name,
                 refusal=refusal,
+                has_copies=found.has_copies,
                 attached=current is not None and current.live_stage is not None,
                 possibly_out_of_date=not found.usable
                 or possibly_out_of_date(generation, bindings.published.get(found.binding_id), current),

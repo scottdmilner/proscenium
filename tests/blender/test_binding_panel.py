@@ -1,7 +1,7 @@
-"""The temporary UI's binding panel: the scene's bindings, their states, and a synchronize button (M7 plan, F2).
+"""The temporary UI's binding panel: the scene's bindings, their states, and their buttons (M7 plan, F2).
 
-The panel's draw function draws into a recording layout (support/recording_layout.py); its synchronize operator is
-called as Blender calls it. Expected states come from what each test did to its bindings.
+The panel's draw function draws into a recording layout (support/recording_layout.py); its operators are called as
+Blender calls them. Expected states come from what each test did to its bindings.
 """
 
 from __future__ import annotations
@@ -20,6 +20,8 @@ from proscenium_sync.results import ResultState
 from proscenium_sync.runtime import binding_operations
 from support import binding_copy_operations
 from support.recording_layout import DrawnOperator, RecordingLayout
+
+from .removal_failures import fail_removing
 
 if TYPE_CHECKING:
     from proscenium_sync.bindings import BindingHandle, Bindings
@@ -40,6 +42,21 @@ def _synchronize_buttons(layout: RecordingLayout) -> list[DrawnOperator]:
     return [drawn for drawn in layout.operators if drawn.idname == "proscenium.synchronize"]
 
 
+def _remove_buttons(layout: RecordingLayout) -> list[DrawnOperator]:
+    return [drawn for drawn in layout.operators if drawn.idname == "proscenium.remove_binding"]
+
+
+def _disable(handle: BindingHandle, destination: str) -> None:
+    """Copy the binding's destination, and drop its index entry, so no copy is canonical and the binding is disabled."""
+    copy = bpy.data.collections[destination].copy()
+    _scene().collection.children.link(copy)
+
+    def drop_entry(entries: dict[BindingId, bpy.types.Collection | None]) -> None:
+        del entries[handle.binding_id]
+
+    binding_copy_operations._write_entries(drop_entry)  # noqa: SLF001
+
+
 def test_a_scene_without_bindings_says_so_under_the_add_button(bindings: Bindings) -> None:
     del bindings
     layout = _drawn()
@@ -55,6 +72,8 @@ def test_each_binding_shows_its_state_and_a_button(bindings: Bindings, tmp_path:
         assert layout.labels == [("Shot", "UNLINKED", True), ("Not synchronized", "NONE", True)]
         [button] = _synchronize_buttons(layout)
         assert (button.idname, button.properties) == ("proscenium.synchronize", {"binding_id": handle.binding_id})
+        [remove] = _remove_buttons(layout)
+        assert (remove.icon, remove.properties) == ("X", {"binding_id": handle.binding_id})
         assert handle.attach(scene.stage).state is not ResultState.FATAL_FAILURE
         assert handle.synchronize(0.0).state is not ResultState.FATAL_FAILURE
         assert _drawn().labels == [("Shot", "LINKED", True), ("Up to date", "NONE", True)]
@@ -84,19 +103,31 @@ def test_statuses_resolve_each_binding_and_generation_once(bindings: Bindings, t
 
 def test_a_disabled_binding_shows_why_and_no_button(bindings: Bindings) -> None:
     # A binding whose destination was copied, with no index entry to choose between the copies, is disabled: the panel
-    # says why, and offers no button.
-    handle = bindings.create_binding(_scene(), name="Shot")
-    copy = bpy.data.collections["Shot"].copy()
-    _scene().collection.children.link(copy)
-
-    def drop_entry(entries: dict[BindingId, bpy.types.Collection | None]) -> None:
-        del entries[handle.binding_id]
-
-    binding_copy_operations._write_entries(drop_entry)  # noqa: SLF001
+    # says why, and offers no button, since both operations would refuse it.
+    _disable(bindings.create_binding(_scene(), name="Shot"), "Shot")
     layout = _drawn()
     assert not _synchronize_buttons(layout)
+    assert not _remove_buttons(layout)
     [(_, icon, _), (reason, error_icon, _)] = layout.labels
     assert icon == "UNLINKED" and error_icon == "ERROR" and reason.startswith("Copies with no canonical candidate")
+
+
+def test_a_binding_with_copies_has_no_remove_button(bindings: Bindings) -> None:
+    # A copy of the destination, with the index's entry keeping the original canonical: the binding still synchronizes,
+    # but removal refuses it while the copy's records remain, so the panel says so and offers no remove button.
+    handle = bindings.create_binding(_scene(), name="Shot")
+    assert [status.has_copies for status in bindings.binding_statuses(_scene())] == [False]
+    _scene().collection.children.link(bpy.data.collections["Shot"].copy())
+    assert [status.has_copies for status in bindings.binding_statuses(_scene())] == [True]
+    layout = _drawn()
+    [button] = _synchronize_buttons(layout)
+    assert button.properties == {"binding_id": handle.binding_id}
+    assert not _remove_buttons(layout)
+    assert layout.labels == [
+        ("Shot", "UNLINKED", True),
+        ("Not synchronized", "NONE", True),
+        ("Has copies, so it can't be removed", "INFO", True),
+    ]
 
 
 def test_the_button_synchronizes_and_pushes_no_step_of_its_own(bindings: Bindings, tmp_path: Path) -> None:
@@ -129,3 +160,46 @@ def test_the_add_button_leaves_no_binding_for_a_file_that_doesnt_open(bindings: 
     with pytest.raises(RuntimeError, match="Can't open"):  # a script sees the error report raised
         bpy.ops.proscenium.add_binding(filepath=str(tmp_path / "missing.usda"))  # ty: ignore[unresolved-attribute]
     assert bindings.binding_statuses(_scene()) == []
+
+
+def test_the_remove_button_removes_the_binding_and_declares_no_undo(bindings: Bindings, tmp_path: Path) -> None:
+    # The operator removes the binding, its content and its destination, and declares no UNDO, since the API pushes the
+    # step (test_binding_removal checks it); the panel then lists no bindings.
+    assert "UNDO" not in binding_panel.PROSCENIUM_OT_remove_binding.bl_options
+    with interaction.kind_hierarchy(tmp_path) as scene:
+        handle = bindings.create_binding(_scene(), name="Shot")
+        assert handle.attach(scene.stage).state is not ResultState.FATAL_FAILURE
+        assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
+        assert bpy.ops.proscenium.remove_binding(binding_id=handle.binding_id) == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+        assert bindings.binding_statuses(_scene()) == []
+        assert "Shot" not in bpy.data.collections
+        assert _drawn().labels == [("No bindings", "NONE", True)]
+
+
+def test_the_remove_operator_reports_why_a_disabled_binding_refuses(bindings: Bindings) -> None:
+    # The panel offers no remove button for a binding that isn't usable, but a script can call the operator: it refuses,
+    # changing nothing, and the script sees the error report, which says why, raised.
+    handle = bindings.create_binding(_scene(), name="Shot")
+    _disable(handle, "Shot")
+    with pytest.raises(RuntimeError, match="no canonical candidate"):
+        bpy.ops.proscenium.remove_binding(binding_id=handle.binding_id)  # ty: ignore[unresolved-attribute]
+    assert [s.binding_id for s in bindings.binding_statuses(_scene())] == [handle.binding_id]
+
+
+def test_the_remove_button_warns_of_disposals_left_pending(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    # A removal that leaves disposals pending in the ledger completes with issues: the binding is gone, and the warning
+    # report, which background mode prints, counts the issues and gives the first one. Each object fails to be removed,
+    # and so does its bounds mesh, which it uses: two issues for each object.
+    with interaction.kind_hierarchy(tmp_path) as scene:
+        handle = bindings.create_binding(_scene(), name="Shot")
+        assert handle.attach(scene.stage).state is not ResultState.FATAL_FAILURE
+        assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
+        objects = set(bpy.data.collections["Shot"].objects)
+        fail_removing(monkeypatch, objects)
+        capfd.readouterr()
+        assert bpy.ops.proscenium.remove_binding(binding_id=handle.binding_id) == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+        assert bindings.binding_statuses(_scene()) == []
+        issues = 2 * len(objects)
+        assert f"Warning: Removed, with {issues} issue(s): Couldn't remove managed" in capfd.readouterr().out

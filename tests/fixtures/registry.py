@@ -229,6 +229,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("removed-target-scene", SYNC, FAILURE, ("DEST-05", "DEST-08"), 1),
                 # Undoing the destination's removal restores the binding with its records.
                 Case("undone-removal", SYNC, SUCCESS, ("DEST-06",), 1),
+                # A removed binding's handles raise for each method needing its records, except release.
+                Case("removed-binding", Operation.REMOVE_BINDING, SUCCESS, ("API-08",), 1),
             ),
         ),
         Fixture(

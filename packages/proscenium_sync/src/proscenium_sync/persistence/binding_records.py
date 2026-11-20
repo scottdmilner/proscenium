@@ -105,6 +105,11 @@ def write_config(destination: bpy.types.Collection, binding_id: BindingId, confi
     id_property_records.write(destination, config_key(binding_id), CONFIG, config)
 
 
+def remove_config(destination: bpy.types.Collection, binding_id: BindingId) -> None:
+    """Remove a binding's configuration from its destination, if it's there; raises as write_config does."""
+    id_property_records.remove(destination, config_key(binding_id), CONFIG)
+
+
 def binding_ids(collection: bpy.types.Collection) -> list[BindingId]:
     """The identifiers of the bindings whose configuration is on collection; normally one, or none."""
     return [
@@ -151,6 +156,18 @@ def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection
     if index.destinations.get(binding_id) is not None:
         return
     _write_entry(text, index, binding_id, destination)
+
+
+def remove_index_entry(binding_id: BindingId) -> None:
+    """Remove a binding's index entry, if it has one, as removing it does (source-access.md#canonical-candidate).
+
+    Raises as restore_index_entry does, writing nothing.
+    """
+    text, index = _index()
+    if text is None or binding_id not in index.destinations:
+        return
+    remaining = {b: d for b, d in index.destinations.items() if b != binding_id}
+    id_property_records.write(text, INDEX_KEY, INDEX, BindingIndex(remaining))
 
 
 def _index() -> tuple[bpy.types.Text | None, BindingIndex]:

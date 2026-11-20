@@ -127,7 +127,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
         binding_id = handle.binding_id
         operations = runtime.binding_operations
         assert operations.find_binding(binding_id) == operations.FoundBinding(
-            binding_id, None, None, None, None, report
+            binding_id, None, None, None, None, report, has_copies=True
         )
         for call in (
             lambda: ownership.manifest(binding_id),

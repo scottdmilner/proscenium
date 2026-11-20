@@ -217,7 +217,7 @@ def test_relative_path_in_an_unsaved_file_is_reported(extension: ModuleType) -> 
     result = cook_panel.cook_tree(tree)
     codes = [diagnostic.code for diagnostic in result.node_reports["Chair File"].diagnostics]
     assert codes == [proscenium_cook.DiagnosticCode.MISSING_BASE_DIRECTORY]
-    report = cook_panel.cook_report(tree, result, with_tree_layer=True)
+    report = cook_panel.cook_report(tree, result, [], [], with_tree_layer=True)
     assert "missing-base-directory" in report
     assert 'def LayerFromFile "Chair_20_File"' in report
 
@@ -225,7 +225,7 @@ def test_relative_path_in_an_unsaved_file_is_reported(extension: ModuleType) -> 
 def test_report_names_the_stages_without_their_contents(extension: ModuleType) -> None:
     del extension
     tree, _nodes = _zone_tree()
-    report = cook_panel.cook_report(tree, cook_panel.cook_tree(tree), with_tree_layer=False)
+    report = cook_panel.cook_report(tree, cook_panel.cook_tree(tree), [], [], with_tree_layer=False)
     assert "  Stage Output 'Stage Output'\n  Viewer 'Viewer'" in report
     assert 'def Xform "Chair"' not in report  # the zone's layer, which the Viewer's stage holds
 
@@ -282,3 +282,48 @@ def test_panel_draws_the_cook_button_and_the_trees_properties(extension: ModuleT
     # Both on the tree, kept per tree.
     assert layout.props == [cook_node_types.PRINT_TREE_LAYER_PROPERTY, cook_node_types.VIEWER_PROPERTY]
     assert layout.labels == []  # the chosen Viewer is one
+
+
+def test_a_stage_outputs_scene_is_the_contexts_when_made(extension: ModuleType) -> None:
+    del extension
+    _tree, nodes = _zone_tree()
+    assert nodes["output"].scene == bpy.context.scene
+
+
+def test_tree_layer_holds_neither_the_scene_nor_the_binding(extension: ModuleType) -> None:
+    del extension
+    tree, nodes = _zone_tree()
+    nodes["output"].binding_id = "a binding's identifier"
+    layer = _tree_layer(tree)
+    output = layer.GetPrimAtPath("/Tree/Stage_20_Output")
+    # The Stage Output's version and its link, as test_tree_layer_follows_the_tree_format reads them, and nothing else.
+    assert sorted(attribute.name for attribute in output.attributes) == ["inputs:layer", "node:version"]
+    assert list(output.relationships) == []
+
+
+def test_a_copied_trees_stage_outputs_name_no_binding(extension: ModuleType) -> None:
+    del extension
+    tree, nodes = _zone_tree()
+    nodes["output"].binding_id = "a binding's identifier"
+    copied: Any = tree.copy()
+    assert copied.nodes["Stage Output"].binding_id == ""  # the node's copy callback cleared it
+    assert copied.nodes["Stage Output"].scene == bpy.context.scene  # the scene is kept
+    assert nodes["output"].binding_id == "a binding's identifier"  # the original keeps its binding
+
+
+def test_a_stage_output_draws_its_scene(extension: ModuleType) -> None:
+    del extension
+    _tree, nodes = _zone_tree()
+    layout = RecordingLayout()
+    nodes["output"].draw_buttons(bpy.context, layout)
+    assert layout.props == [cook_node_types.SCENE_PROPERTY, "prop_coordinateConversion"]  # the identifier is hidden
+    assert layout.labels == []
+
+
+def test_a_stage_output_with_no_scene_says_it_has_no_binding(extension: ModuleType) -> None:
+    del extension
+    _tree, nodes = _zone_tree()
+    nodes["output"].scene = None
+    layout = RecordingLayout()
+    nodes["output"].draw_buttons(bpy.context, layout)
+    assert layout.labels == [("No scene, so no binding", "ERROR", True)]

@@ -48,6 +48,7 @@ tests/
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
 │   ├── published_state.py          the whole published generation and the file's datablocks, compared around a failure
 │   ├── blender_state.py              the reset, baseline check, and cleanup
+│   ├── removal_failures.py   removals that fail for chosen datablocks
 │   └── transaction_failures.py  synchronizations whose steps fail as the transaction fixtures say
 ├── isolated/                 fresh-process tests
 │   ├── conftest.py           `wheel`, `runtime`, and `hydra_bridge` fixtures

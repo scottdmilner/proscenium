@@ -1,8 +1,9 @@
-"""Calls made while a synchronization, a cache call, or a cleanup retry runs (source-access.md#source-consistency).
+"""Calls made while a synchronization, a cache call, a cleanup retry, or a removal runs.
 
-M5 plan, D11 and E1. On F-SOURCE-CHANGE (fixtures/transaction.py), with a second binding on the same stage. The calls
-are made from inside the evaluation step, by patching the planner's SceneIndexChain.capture, and from inside a retry's
-removal, by patching the removal module's function, so src/ has no hooks.
+source-access.md#source-consistency; M5 plan, D11 and E1. On F-SOURCE-CHANGE (fixtures/transaction.py), with a second
+binding on the same stage. The calls are made from inside the evaluation step, by patching the planner's
+SceneIndexChain.capture, and from inside the removal of datablocks a retry or a binding's removal makes, by patching the
+removal module's function, so src/ has no hooks.
 """
 
 from __future__ import annotations
@@ -59,10 +60,10 @@ def _calls(scene: TransactionScene, handle: BindingHandle) -> list[Callable[[], 
     """The calls CONS-04 lists, on handle."""
     synchronize, attach = (lambda: handle.synchronize(0)), (lambda: handle.attach(scene.caller))
     cache = lambda: handle.cache([5])  # noqa: E731
-    return [synchronize, cache, attach, handle.release, handle.reload, handle.retry_cleanup]
+    return [synchronize, cache, attach, handle.release, handle.reload, handle.retry_cleanup, handle.remove]
 
 
-CALLS = 2 * 6  # each of _calls on the running binding and on the other
+CALLS = 2 * 7  # each of _calls on the running binding and on the other
 
 
 def _check_reentrant_calls(
@@ -156,6 +157,28 @@ def test_calls_during_a_cleanup_retry_raise(
         assert (result.state, result.pending_cleanup_diagnostics) == (ResultState.SUCCESS, ())
         assert other.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
         assert handle.synchronize(0).state is ResultState.SUCCESS  # nothing left running
+
+
+def test_calls_during_a_removal_raise(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A removal removes datablocks and writes the ledger and records, so it runs alone too: from inside its removal of
+    # datablocks, each call raises and changes nothing, set_settings writes the configuration, and removal completes.
+    with transaction.source_change(tmp_path) as scene:
+        handle, other = _binding(bindings, scene, "Shot"), _binding(bindings, scene, "Other")
+        assert handle.synchronize(0).state is ResultState.SUCCESS
+        remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
+        made: list[int] = []
+
+        def reentering(datablocks: Sequence[bpy.types.ID]) -> None:
+            if not made:  # the first level's call
+                made.append(_check_reentrant_calls(bindings, scene, handle, other))
+                assert other.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
+            remove(datablocks)
+
+        monkeypatch.setattr(datablock_removal, "_batch_remove", reentering)
+        assert handle.remove().state is ResultState.SUCCESS
+        assert made == [CALLS]  # once
+        assert other.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
+        assert other.synchronize(0).state is ResultState.SUCCESS  # nothing left running
 
 
 def test_an_exception_escaping_a_synchronization_ends_it(
