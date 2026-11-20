@@ -5,7 +5,9 @@ the tree's TreeCook holds, so the cook's state, and the stages it returns, last 
 "Input"). The kept cooks are keyed by the tree's session UID and hold no Blender data; loading a file drops them. The
 active Viewer is the one the tree's Viewer dropdown names. The tree's diagnostics, each node's report, and which
 nodes have a stage are printed to the console, and the Viewer's stage shows in the cook inspector's panels below,
-which the kept cook holds it for. Nothing is handed to a binding.
+which the kept cook holds it for. The Cook operator then hands each Stage Output's stage to its binding and synchronizes
+it (cook_bindings), printing each one's binding and result; it declares no UNDO, since each synchronization that
+publishes pushes its own undo step. The panel names each Stage Output that has no scene, so no binding.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from pxr import Sdf, Usd
 
 import proscenium_cook
 
-from . import cook_inspector, cook_node_types, cook_tree_layer
+from . import cook_bindings, cook_inspector, cook_node_types, cook_tree_layer
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -75,8 +77,14 @@ def forget_cooks() -> None:
     cook_inspector.forget_shown()
 
 
-def cook_report(tree: bpy.types.NodeTree, result: proscenium_cook.CookResult, *, with_tree_layer: bool) -> str:
-    """What a cook gave, as the console shows it."""
+def cook_report(
+    tree: bpy.types.NodeTree,
+    result: proscenium_cook.CookResult,
+    synchronizations: list[cook_bindings.StageOutputSync],
+    *,
+    with_tree_layer: bool,
+) -> str:
+    """What a cook gave, and what its Stage Outputs' bindings did with it, as the console shows it."""
     viewer = active_viewer(tree)
     lines = [f"=== Proscenium cook of {tree.name!r}, Viewer {viewer!r} ==="]
     if with_tree_layer and (stage := tree_stage(tree)) is not None:
@@ -98,6 +106,8 @@ def cook_report(tree: bpy.types.NodeTree, result: proscenium_cook.CookResult, *,
         lines.append(f"  Viewer {viewer!r}")
     if not result.stage_outputs and result.viewer_stage is None:
         lines.append("  (none)")
+    lines.append("--- Bindings ---")
+    lines += cook_bindings.sync_report_lines(synchronizations)
     return "\n".join(lines)
 
 
@@ -111,11 +121,11 @@ def diagnostic_counts(result: proscenium_cook.CookResult) -> tuple[int, int]:
 
 
 class PROSCENIUM_OT_cook_tree(bpy.types.Operator):  # noqa: N801 - Blender's operator naming
-    """Cook the edited tree, and print its diagnostics and stages to the console."""
+    """Cook the edited tree, synchronize its Stage Outputs' bindings, and print what each gave to the console."""
 
     bl_idname = "proscenium.cook_tree"
     bl_label = "Cook"
-    bl_options = {"REGISTER"}  # noqa: RUF012 - Blender's operator field; no UNDO, as it writes no Blender data
+    bl_options = {"REGISTER"}  # noqa: RUF012 - Blender's operator field; no UNDO, as synchronizing pushes the steps
 
     @classmethod
     @override
@@ -125,20 +135,26 @@ class PROSCENIUM_OT_cook_tree(bpy.types.Operator):  # noqa: N801 - Blender's ope
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:
-        """Cook, print, and report the diagnostic counts."""
+        """Cook, synchronize, print, and report the diagnostic counts and the failed synchronizations."""
         tree = _edited_tree(context)
         assert tree is not None  # poll
         result = cook_tree(tree)
+        synchronizations = cook_bindings.synchronize_stage_outputs(tree, result)
         with_tree_layer = getattr(tree, cook_node_types.PRINT_TREE_LAYER_PROPERTY)
-        print(cook_report(tree, result, with_tree_layer=with_tree_layer))
+        print(cook_report(tree, result, synchronizations, with_tree_layer=with_tree_layer))
         errors, warnings = diagnostic_counts(result)
         stages = len(result.stage_outputs) + (result.viewer_stage is not None)
-        self.report({"INFO"}, f"Cooked {stages} stage(s): {errors} error(s), {warnings} warning(s); see the console")
+        failed = sum(sync.failed for sync in synchronizations)
+        self.report(
+            {"INFO"},
+            f"Cooked {stages} stage(s): {errors} error(s), {warnings} warning(s), {failed} failed synchronization(s);"
+            " see the console",
+        )
         return {"FINISHED"}
 
 
 class PROSCENIUM_PT_cook_tree(bpy.types.Panel):  # noqa: N801 - Blender's panel naming
-    """The cook button, whether it prints the tree's layer, and which Viewer it cooks."""
+    """The cook button, whether it prints the tree's layer, which Viewer it cooks, and Stage Outputs with no scene."""
 
     bl_idname = "PROSCENIUM_PT_cook_tree"
     bl_label = "Cook"
@@ -154,7 +170,7 @@ class PROSCENIUM_PT_cook_tree(bpy.types.Panel):  # noqa: N801 - Blender's panel 
 
     @override
     def draw(self, context: Any) -> None:
-        """The cook button, the checkbox for printing the tree's layer, and the Viewer dropdown."""
+        """The cook button, the checkbox for printing the tree's layer, the Viewer dropdown, and scenes missing."""
         tree = _edited_tree(context)
         assert tree is not None  # poll
         layout: Any = self.layout
@@ -164,6 +180,9 @@ class PROSCENIUM_PT_cook_tree(bpy.types.Panel):  # noqa: N801 - Blender's panel 
         viewer = active_viewer(tree)
         if viewer is not None and viewer not in cook_node_types.viewer_names(tree):
             layout.label(text=f"No Viewer is named {viewer!r}", icon="ERROR")
+        for node in cook_bindings.stage_output_nodes(tree):
+            if getattr(node, cook_node_types.SCENE_PROPERTY) is None:
+                layout.label(text=f"{node.name}: {cook_bindings.NO_SCENE}", icon="ERROR")
 
 
 CLASSES = (PROSCENIUM_OT_cook_tree, PROSCENIUM_PT_cook_tree)

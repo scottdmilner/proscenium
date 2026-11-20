@@ -217,7 +217,7 @@ def test_relative_path_in_an_unsaved_file_is_reported(extension: ModuleType) -> 
     result = cook_panel.cook_tree(tree)
     codes = [diagnostic.code for diagnostic in result.node_reports["Chair File"].diagnostics]
     assert codes == [proscenium_cook.DiagnosticCode.MISSING_BASE_DIRECTORY]
-    report = cook_panel.cook_report(tree, result, with_tree_layer=True)
+    report = cook_panel.cook_report(tree, result, [], with_tree_layer=True)
     assert "missing-base-directory" in report
     assert 'def LayerFromFile "Chair_20_File"' in report
 
@@ -225,7 +225,7 @@ def test_relative_path_in_an_unsaved_file_is_reported(extension: ModuleType) -> 
 def test_report_names_the_stages_without_their_contents(extension: ModuleType) -> None:
     del extension
     tree, _nodes = _zone_tree()
-    report = cook_panel.cook_report(tree, cook_panel.cook_tree(tree), with_tree_layer=False)
+    report = cook_panel.cook_report(tree, cook_panel.cook_tree(tree), [], with_tree_layer=False)
     assert "  Stage Output 'Stage Output'\n  Viewer 'Viewer'" in report
     assert 'def Xform "Chair"' not in report  # the zone's layer, which the Viewer's stage holds
 
