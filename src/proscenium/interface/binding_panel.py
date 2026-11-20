@@ -1,12 +1,14 @@
-"""The binding panel: an add button, then the scene's bindings, each with its state and a sync button (M7 plan, F2).
+"""The binding panel: an add button, then the scene's bindings, each with its state and its buttons (M7 plan, F2).
 
 In the 3D view's sidebar, Proscenium tab. The add button picks a USD file, opens its stage, and creates a binding on the
 scene, named for the file, with the stage attached. Its operator declares UNDO, since creating a binding pushes no undo
 step of its own; undoing it keeps the attachment, so redo brings the binding back attached. Each draw lists the scene's
 bindings with one call (Bindings.binding_statuses): each one's name, whether a stage is attached, whether its display is
 published and may be out of date, how its last attempt ended, or why it can't be used. The synchronize button
-synchronizes at the scene's current frame; its operator declares no UNDO, since the API pushes the synchronization's
-undo step.
+synchronizes at the scene's current frame. The remove button removes the binding (Bindings.remove_binding), its
+managed content and its configuration, so one left behind needn't be deleted by hand. A binding that can't be used has
+neither button, since both would refuse it; the row says why. Neither operator declares UNDO, since the API pushes the
+synchronization's and the removal's undo steps.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ def state_text(status: proscenium_sync.BindingStatus) -> str:
 
 
 def draw_bindings(layout: Any, scene: bpy.types.Scene) -> None:
-    """The add button, then each binding: its name and attachment, its state or why it can't be used, and a button."""
+    """The add button, then each binding: its name and attachment, its state or why it can't be used, and buttons."""
     layout.operator(PROSCENIUM_OT_add_binding.bl_idname, icon="ADD")
     statuses = proscenium_sync.BINDINGS.binding_statuses(scene)
     if not statuses:
@@ -44,11 +46,13 @@ def draw_bindings(layout: Any, scene: bpy.types.Scene) -> None:
         box = layout.box()
         row = box.row()
         row.label(text=status.name or status.binding_id, icon="LINKED" if status.attached else "UNLINKED")
-        if status.refusal is not None:
+        if status.refusal is not None:  # both buttons would refuse it
             box.label(text=status.refusal, icon="ERROR")
             continue
-        button = row.operator(PROSCENIUM_OT_synchronize.bl_idname, text="", icon="FILE_REFRESH")
-        button.binding_id = status.binding_id
+        synchronize = row.operator(PROSCENIUM_OT_synchronize.bl_idname, text="", icon="FILE_REFRESH")
+        synchronize.binding_id = status.binding_id
+        remove = row.operator(PROSCENIUM_OT_remove_binding.bl_idname, text="", icon="X")
+        remove.binding_id = status.binding_id
         box.label(text=state_text(status))
 
 
@@ -107,6 +111,29 @@ class PROSCENIUM_OT_synchronize(bpy.types.Operator):  # noqa: N801 - Blender's o
         return {"FINISHED"}
 
 
+class PROSCENIUM_OT_remove_binding(bpy.types.Operator):  # noqa: N801 - Blender's operator naming
+    """Remove the binding, its managed content and its configuration, keeping what anything else uses."""
+
+    bl_idname = "proscenium.remove_binding"
+    bl_label = "Remove Binding"
+    bl_options = {"REGISTER"}  # noqa: RUF012 - Blender's operator field; no UNDO, as the API pushes the step
+    binding_id: bpy.props.StringProperty()  # ty: ignore[invalid-type-form]
+
+    @override
+    def execute(self, context: Any) -> set[OperatorReturnItems]:
+        result = proscenium_sync.BINDINGS.remove_binding(self.binding_id)
+        if result.state is proscenium_sync.ResultState.FATAL_FAILURE:  # a refusal, which changed nothing
+            message = result.diagnostics[0].message if result.diagnostics else "Removing the binding failed"
+            self.report({"ERROR"}, message)
+            return {"CANCELLED"}
+        if result.state is proscenium_sync.ResultState.COMPLETED_WITH_ISSUES:  # disposals left pending in the ledger
+            issues = result.diagnostics
+            self.report({"WARNING"}, f"Removed, with {len(issues)} issue(s): {issues[0].message}")
+        else:
+            self.report({"INFO"}, "Removed")
+        return {"FINISHED"}
+
+
 class PROSCENIUM_PT_bindings(bpy.types.Panel):  # noqa: N801 - Blender's panel naming
     """The scene's bindings."""
 
@@ -120,4 +147,4 @@ class PROSCENIUM_PT_bindings(bpy.types.Panel):  # noqa: N801 - Blender's panel n
         draw_bindings(self.layout, context.scene)
 
 
-CLASSES = (PROSCENIUM_OT_add_binding, PROSCENIUM_OT_synchronize, PROSCENIUM_PT_bindings)
+CLASSES = (PROSCENIUM_OT_add_binding, PROSCENIUM_OT_synchronize, PROSCENIUM_OT_remove_binding, PROSCENIUM_PT_bindings)

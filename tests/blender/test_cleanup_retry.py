@@ -1,7 +1,7 @@
 """Retrying pending cleanup explicitly (M5 plan, D9; lifecycle.md#pending-cleanup).
 
 On F-PREPARATION-CLEANUP-FAILURE (fixtures/transaction.py), whose failed synchronization leaves an object and a bounds
-mesh pending. Failures are injected by patching the removal module's function, so src/ has no hooks.
+mesh pending. Failures are injected as removal_failures.py says, so src/ has no hooks.
 """
 
 from __future__ import annotations
@@ -16,13 +16,12 @@ from fixtures import transaction
 from proscenium_sync.persistence import binding_records, cleanup_ledgers, id_property_records
 from proscenium_sync.results import DiagnosticCode, ResultState
 from proscenium_sync.runtime import pending_cleanup
-from proscenium_sync.synchronization import datablock_removal
 from support.blend import save_and_reopen
 
+from .removal_failures import fail_removing
 from .transaction_failures import failing_preparation
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from pathlib import Path
 
     from fixtures.transaction import PreparationCleanupFailureScene
@@ -52,18 +51,6 @@ def _by_name(ledger: dict[str, LedgerEntry]) -> dict[str, tuple[object, ...]]:
         k: (e.binding_id, e.manifest_entry_key, e.role, e.datablock and e.datablock.name, e.operation, e.diagnostic)
         for k, e in ledger.items()
     }
-
-
-def _fail_removing(monkeypatch: pytest.MonkeyPatch, failing: set[bpy.types.ID]) -> None:
-    """Make removing one of failing fail, or a call with one; by datablock, as an object and its mesh share a name."""
-    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
-
-    def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
-        if any(d in failing for d in datablocks):
-            raise RuntimeError("injected failure")
-        remove(datablocks)
-
-    monkeypatch.setattr(datablock_removal, "_batch_remove", failing_remove)
 
 
 def test_a_retry_after_reopening_resolves_it_all(bindings: Bindings, tmp_path: Path) -> None:
@@ -111,7 +98,7 @@ def test_a_retry_that_resolves_nothing_fails(
         handle = _binding(bindings, scene)
         failed, leftovers = failing_preparation(handle, scene, 0)
         before = _ledger()
-        _fail_removing(monkeypatch, leftovers)
+        fail_removing(monkeypatch, leftovers)
         result = handle.retry_cleanup()
         assert result.state is ResultState.FATAL_FAILURE
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.CLEANUP_FAILED] + [
@@ -132,7 +119,7 @@ def test_a_retry_that_resolves_some_completes_with_issues(
         handle = _binding(bindings, scene)
         _, leftovers = failing_preparation(handle, scene, 0)
         [mesh] = (d for d in leftovers if isinstance(d, bpy.types.Mesh))
-        _fail_removing(monkeypatch, {mesh})
+        fail_removing(monkeypatch, {mesh})
         result = handle.retry_cleanup()
         assert result.state is ResultState.COMPLETED_WITH_ISSUES
         [diagnostic] = result.diagnostics

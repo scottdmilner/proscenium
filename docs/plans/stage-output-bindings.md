@@ -51,7 +51,7 @@ On each cook, for each Stage Output, keyed by node ID:
 - **A copied tree** names no bindings of its own, since the copies' nodes are cleared (open question 3). Its record starts empty, so it removes nothing the original made.
 - **Deleting a whole tree** leaves its bindings in their scenes as ordinary bindings. The user can remove each one through the binding UI.
 - **The binding UI** gets a Remove button that calls the new removal call, so a binding left behind can be removed without deleting its collection by hand.
-- **A binding that isn't usable can't be removed,** whether its configuration can't be read or it's a copy with no canonical candidate. Removal refuses it, as the other operations do, so the Remove button reports why. That's accepted until M11's repair work (make a new binding, or detach): until then, the user deletes a disabled copy's collection by hand, which removes it with its records ([Removed Destination](../spec/lifecycle.md#removed-destination)).
+- **A binding that isn't usable can't be removed,** whether its configuration can't be read or it's a copy with no canonical candidate. Removal refuses it, as the other operations do, so the binding UI shows why and offers no Remove button. That's accepted until M11's repair work (make a new binding, or detach): until then, the user deletes a disabled copy's collection by hand, which removes it with its records ([Removed Destination](../spec/lifecycle.md#removed-destination)).
 
 ### Reload
 

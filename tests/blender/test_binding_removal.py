@@ -4,7 +4,7 @@ The Stage Output bindings plan's step 1, ahead of M11.
 
 On F-UNMANAGED-USER (fixtures/incremental.py), whose content a test may give unmanaged users before removing, on
 F-BINDING-STATE for the handles of a removed binding, and on F-PREPARATION-CLEANUP-FAILURE for a binding with leftovers.
-Failures are injected by patching the removal module's function, so src/ has no hooks. Undo steps are pushed only
+Failures are injected as removal_failures.py says, so src/ has no hooks. Undo steps are pushed only
 outside background mode, which the bpy wheel always is, so the undo test patches the API's _undo_steps_enabled.
 """
 
@@ -23,15 +23,15 @@ from proscenium_sync.persistence import binding_records, cleanup_ledgers, id_pro
 from proscenium_sync.persistence.manifests import RepresentationRole
 from proscenium_sync.results import DiagnosticCode, ResultState
 from proscenium_sync.runtime import ownership, pending_cleanup
-from proscenium_sync.synchronization import datablock_removal
 from support import undo
 from support.usd import binding_on_file
 
+from .removal_failures import fail_removing
 from .test_resource_stability import UnmanagedState, _unmanaged_users
 from .transaction_failures import failing_preparation
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
     from pathlib import Path
 
     from proscenium_sync.bindings import BindingHandle, Bindings
@@ -79,18 +79,6 @@ def _key(datablock: bpy.types.ID) -> tuple[str, str]:
 
 def _names() -> set[tuple[str, str]]:
     return {_key(d) for d in (*bpy.data.objects, *bpy.data.meshes, *bpy.data.collections)}
-
-
-def _fail_removing(monkeypatch: pytest.MonkeyPatch, fail: Callable[[bpy.types.ID], bool]) -> None:
-    """Make removing a datablock fail accepts fail, or a call with one."""
-    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
-
-    def failing(datablocks: Sequence[bpy.types.ID]) -> None:
-        if any(fail(d) for d in datablocks):
-            raise RuntimeError("injected failure")
-        remove(datablocks)
-
-    monkeypatch.setattr(datablock_removal, "_batch_remove", failing)
 
 
 def test_removal_removes_the_content_and_the_destination(bindings: Bindings, tmp_path: Path) -> None:
@@ -183,7 +171,7 @@ def test_a_failed_disposal_stays_pending_after_the_binding_is_gone(
         used = _managed_of(handle, incremental.USED, RepresentationRole.OBJECT)
         mesh = _managed_of(handle, incremental.USED, RepresentationRole.BOUNDS_MESH)
         assert isinstance(used, bpy.types.Object)
-        _fail_removing(monkeypatch, lambda d: d == used)
+        fail_removing(monkeypatch, {used})
         result = handle.remove()
         assert result.state is ResultState.COMPLETED_WITH_ISSUES
         assert {d.code for d in result.diagnostics} == {DiagnosticCode.REMOVAL_FAILED}
@@ -268,7 +256,7 @@ def test_a_leftover_that_fails_again_gets_a_fresh_diagnostic(
         failed, leftovers = failing_preparation(handle, scene, 0)
         [mesh] = (d for d in leftovers if isinstance(d, bpy.types.Mesh))
         [(ledger_key, before)] = ((k, e) for k, e in _ledger().items() if e.datablock == mesh)
-        _fail_removing(monkeypatch, lambda d: d == mesh)
+        fail_removing(monkeypatch, {mesh})
         result = handle.remove()
         assert result.state is ResultState.COMPLETED_WITH_ISSUES
         [diagnostic] = result.diagnostics
@@ -317,7 +305,7 @@ def test_a_destination_that_cant_be_removed_stays_without_records(
     with incremental.unmanaged_user(tmp_path) as scene:
         handle = _synchronized(bindings, scene.root_layer_path)
         destination = bpy.data.collections["Shot"]
-        _fail_removing(monkeypatch, lambda d: d == destination)
+        fail_removing(monkeypatch, {destination})
         result = handle.remove()
         assert (result.state, result.diagnostics, result.pending_cleanup_diagnostics) == (ResultState.SUCCESS, (), ())
         assert (list(destination.objects), id_property_records.keys(destination)) == ([], [])
