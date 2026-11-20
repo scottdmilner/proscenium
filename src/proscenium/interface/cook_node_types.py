@@ -6,6 +6,10 @@ definitions"). Each node's inputs and outputs are sockets, identified by their a
 and its properties are node properties named `prop_<name>`. A zone's begin names its end with `zone_end`, the end
 node's name. Behavior stays in the cook; these types only hold what the tree layer authors (cook_tree_layer).
 
+A Stage Output also holds front-end state that the tree layer doesn't write, so the cook never sees it: `scene`, the
+scene its binding displays in, which a new node takes from the context; and `binding_id`, hidden, its binding's
+identifier. A copied Stage Output's identifier is cleared, so the copy makes a binding of its own on its next cook.
+
 A link the cook would reject (proscenium_cook.link_problem), such as a Layer into a Prim input, is drawn red, as
 Blender draws an invalid link in its own editors, and kept: the tree layer still writes it, and the cook reports it as
 incompatible-link. A link through reroutes is checked from the output it starts at. Blender marks every link valid
@@ -31,6 +35,9 @@ TREE_IDNAME = "ProsceniumCookTree"
 ZONE_END_PROPERTY = "zone_end"
 PRINT_TREE_LAYER_PROPERTY = "print_tree_layer"
 VIEWER_PROPERTY = "viewer"
+STAGE_OUTPUT_TYPE = "StageOutput"
+SCENE_PROPERTY = "scene"
+BINDING_ID_PROPERTY = "binding_id"
 
 # Socket colors by socket kind, and for the value sockets Blender draws itself.
 _KIND_COLORS = {
@@ -113,8 +120,10 @@ class CookNode:
         return ntree.bl_idname == TREE_IDNAME
 
     def init(self, context: Any) -> None:
-        """Add a socket per input and output, in the definition's order; the tree's only Viewer becomes its Viewer."""
-        del context
+        """Add a socket per input and output, in the definition's order; the tree's only Viewer becomes its Viewer.
+
+        A Stage Output's scene is the context's.
+        """
         node: Any = self
         for attribute in self.cook_definition.attributes:
             if attribute.namespace == "inputs":
@@ -129,13 +138,26 @@ class CookNode:
                 node.outputs.new(socket_idname(attribute), attribute.label, identifier=attribute.base_name)
         if self.cook_definition.type_name == "Viewer" and viewer_names(node.id_data) == [node.name]:
             setattr(node.id_data, VIEWER_PROPERTY, node.name)  # a tree with one Viewer cooks it without a choice
+        if self.cook_definition.type_name == STAGE_OUTPUT_TYPE:
+            # A script's nodes.new passes no context.
+            setattr(node, SCENE_PROPERTY, (context if context is not None else bpy.context).scene)
+
+    def copy(self, node: Any) -> None:
+        """A copied Stage Output names no binding, so it makes its own on its next cook."""
+        del node  # the original
+        if self.cook_definition.type_name == STAGE_OUTPUT_TYPE:
+            setattr(self, BINDING_ID_PROPERTY, "")
 
     def draw_buttons(self, context: Any, layout: Any) -> None:
-        """Draw the node's properties, and a begin's end."""
+        """Draw the node's properties, a begin's end, and a Stage Output's scene, or why it has no binding."""
         del context
         node: Any = self
         if self.cook_definition.zone_role == "begin":
             layout.prop_search(node, ZONE_END_PROPERTY, node.id_data, "nodes", text="End")
+        if self.cook_definition.type_name == STAGE_OUTPUT_TYPE:
+            layout.prop(node, SCENE_PROPERTY)
+            if getattr(node, SCENE_PROPERTY) is None:
+                layout.label(text="No scene, so no binding", icon="ERROR")
         for attribute in self.cook_definition.attributes:
             if attribute.namespace != "props":
                 continue
@@ -428,6 +450,8 @@ def _node_type(definition: CookNodeDefinition) -> Any:
         annotations[ZONE_END_PROPERTY] = bpy.props.StringProperty(
             name="Zone End", description=f"The {_label(definition.zone_partner or '')} node that ends this zone"
         )
+    if definition.type_name == STAGE_OUTPUT_TYPE:
+        annotations |= _binding_properties()
     for attribute in definition.attributes:
         if attribute.namespace == "props":
             node_property = _node_property(attribute)
@@ -445,6 +469,18 @@ def _node_type(definition: CookNodeDefinition) -> Any:
             "__doc__": definition.doc,
         },
     )
+
+
+def _binding_properties() -> dict[str, Any]:
+    """A Stage Output's front-end state, which the tree layer doesn't write: its binding's scene and identifier."""
+    return {
+        SCENE_PROPERTY: bpy.props.PointerProperty(
+            type=bpy.types.Scene, name="Scene", description="The scene the Stage Output's binding displays in"
+        ),
+        BINDING_ID_PROPERTY: bpy.props.StringProperty(
+            name="Binding", description="The identifier of the Stage Output's binding", options={"HIDDEN"}
+        ),
+    }
 
 
 def _node_property(attribute: CookAttribute) -> Any:

@@ -30,7 +30,7 @@ Step 1 settles how removal works (`synchronization/binding_removal.py`):
 - **A Scene property,** a pointer to the scene the binding displays in. A suggested default: `init` sets it to the context's scene, as `init` already sets a tree's only Viewer. A Stage Output with no scene has no binding, and the node and the Cook panel say why.
 - **The coordinate conversion property** the node already carries becomes the binding's setting, through `set_settings(coordinate_conversion=...)` before each synchronization.
 - **A stored binding identifier,** a hidden string property on the node. It's front-end state: `cook_tree_layer` doesn't write it into the tree's layer, so the cook never sees it.
-- **Duplicating a Stage Output clears its binding identifier,** so the copy makes a binding of its own on its next cook, as a new node does. A suggested mechanism is the node's `copy` callback. Copy-and-paste goes through it too. Whether copying a whole tree calls it is open question 3.
+- **Duplicating a Stage Output clears its binding identifier,** so the copy makes a binding of its own on its next cook, as a new node does. A suggested mechanism is the node's `copy` callback. Copy-and-paste goes through it too, and so does copying a whole tree (open question 3).
 
 ### Cooking
 
@@ -83,4 +83,4 @@ These are Blender-layer tests, building the tree through bpy as the cook tree te
 
 1. **How much of M11's removal comes forward** (settled by step 1). Remove binding's full failure safety needs M11's decision record on retaining unresolved ownership information. This plan delivers removal with the ledger keeping failed disposals as it does now, which is OWN-14 and API-08 on the success path and on a failed disposal. M11 keeps the decision record, cleanup that reaches the ledger entries of a binding that no longer exists, fault injection at each commit point, and `F-LIFECYCLE-FAILURE`.
 2. **Whether a cook synchronizes every Stage Output, or only those whose stage changed.** `possibly_out_of_date()` tells which bindings may be stale. Incremental synchronization makes an unchanged one cheap, but how cheap a recooked zone's transfer is hasn't been checked ([node-tree.md](../phase3/node-tree.md), "Incremental synchronization").
-3. **Copying a whole tree:** whether Blender calls each node's `copy` callback when a node tree datablock is copied or appended. If it doesn't, a copied tree's Stage Outputs share the original's bindings until something clears them. One fix is to clear any identifier that the tree's own record doesn't list.
+3. **Copying a whole tree** (settled for a copy by step 3). Blender calls each node's `copy` callback when a node tree datablock is copied. **Checked:** after `tree.copy()`, the copy's Stage Output had no identifier and the original's kept its own. Whether appending a tree from another file calls it isn't checked. If it doesn't, one fix is to clear any identifier that the tree's own record doesn't list.
