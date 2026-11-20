@@ -99,7 +99,7 @@ def create(scene: bpy.types.Scene, settings: binding_settings.RequestedSettings,
 
     Returns its identifier. Raises what binding_records.create_binding raises.
     """
-    return binding_records.create_binding(scene, settings, name).binding_id
+    return binding_records.create_binding(scene, settings, name)
 
 
 def set_config(binding_id: BindingId, config: BindingConfig) -> None:

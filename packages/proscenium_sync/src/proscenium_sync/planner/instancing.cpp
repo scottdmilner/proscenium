@@ -67,7 +67,10 @@ VtArray<T> PointValues(const PrimRecord& instancer, const TfToken& name) {
 // Each point's transform in the instancer's space, as UsdGeomPointInstancer::ComputeInstanceTransformsAtTime composes
 // it without the prototype root's transform, which the prototype's flattened matrices already hold: scale, then
 // rotation, then translation, after any instance transform. Row vectors, as Gf's. The bridge's PointTransforms.
-std::vector<GfMatrix4d> PointTransforms(const PrimRecord& instancer, std::size_t points) {
+std::vector<GfMatrix4d> PointTransforms(const PrimRecord& instancer, const InstancerRecord& topology) {
+  std::size_t points = topology.mask.size();
+  for (const VtIntArray& indices : topology.instanceIndices)
+    for (const int k : indices) points = std::max(points, static_cast<std::size_t>(std::max(k, 0)) + 1);
   const auto translations = PointValues<GfVec3d, GfVec3f, GfVec3h>(instancer, HdInstancerTokens->instanceTranslations);
   const auto rotations = PointValues<GfQuatd, GfQuatf, GfQuath>(instancer, HdInstancerTokens->instanceRotations);
   const auto scales = PointValues<GfVec3d, GfVec3f, GfVec3h>(instancer, HdInstancerTokens->instanceScales);
@@ -268,10 +271,10 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
   }
   const std::vector<DrawnCopy>& outers = CopiesOf(instancer, depth + 1);
   if (outers.empty()) return {};
-  std::size_t points = topology.mask.size();
-  for (const VtIntArray& indices : topology.instanceIndices)
-    for (const int k : indices) points = std::max(points, static_cast<std::size_t>(std::max(k, 0)) + 1);
-  const std::vector<GfMatrix4d> transforms = PointTransforms(instancer, points);
+  // Every prototype's expansion shares the instancer's point transforms.
+  const auto [cached, inserted] = pointTransforms_.try_emplace(instancer.hydraPath);
+  if (inserted) cached->second = PointTransforms(instancer, topology);
+  const std::vector<GfMatrix4d>& transforms = cached->second;
   // What the instancer and its ancestors inside the outer prototype give each copy, found once, as Expand does.
   const SdfPath& outerRoot = outers.front().hydraNamespaceRoot;
   const bool resets = ResetsBelow(instancer.hydraPath, outerRoot);

@@ -64,8 +64,9 @@ void AppendUniqueDiagnostics(const Diagnostics& from, Diagnostics& to);
 inline constexpr std::size_t kListedPerProblem = 10;
 
 // Finishes a plan's diagnostics in place. A problem, a diagnostic's code, message, property, asset, and fallback, keeps
-// its first kListedPerProblem diagnostics in order; the rest give way to one more, where the first left out was, with
-// no source, counting them. Each kept one's message then names its Hydra prim and counts its copies.
+// the kListedPerProblem of its diagnostics first in source order, sorted, then one with no source counting the rest.
+// Problems are in the order each first appears. Each kept one's message then names its Hydra prim and counts its
+// copies.
 void SummarizeRepeatedDiagnostics(Diagnostics& diagnostics);
 
 // Moves the Tf errors posted since `mark` into `out` as usd-error diagnostics about `source`, clearing them.

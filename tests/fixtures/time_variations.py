@@ -72,9 +72,9 @@ class TimeVariationsScene:
         return frozenset({*plain, _point(0, "Pebble"), *extra})
 
     def sheared(self, time_code: float | None) -> frozenset[CopyIdentity]:
-        """The copies whose world matrix shears them: Skew always, Shearing after 10."""
-        later = time_code is not None and time_code > 10.0
-        return frozenset({_plain(SKEW), *((_plain(SHEARING),) if later else ())})
+        """The copies whose world matrix shears them: Skew always, Shearing and Flicker after 10."""
+        later = (_plain(SHEARING), _plain(FLICKER)) if time_code is not None and time_code > 10.0 else ()
+        return frozenset({_plain(SKEW), *later})
 
     def boxes(self, time_code: float | None) -> frozenset[CopyIdentity]:
         """The placeholders shown as boxes, the rest markers: Grows always, Flicker in [10, 20)."""
@@ -102,7 +102,7 @@ def time_variations(dest: Path) -> Generator[TimeVariationsScene]:
             _plain(SKEW): frozenset({aspect.TRANSFORM}),
             _plain(SHEARING): frozenset({aspect.TRANSFORM, aspect.SHEAR}),
             _plain(GROWS): frozenset({aspect.BOUNDS}),
-            _plain(FLICKER): frozenset({aspect.BOUNDS_PRESENCE}),
+            _plain(FLICKER): frozenset({aspect.BOUNDS_PRESENCE, aspect.TRANSFORM, aspect.SHEAR}),
             _plain(STILL): frozenset(),
             _point(0, "Pebble"): frozenset(),
             _point(1, "Pebble"): frozenset({aspect.EXISTENCE}),

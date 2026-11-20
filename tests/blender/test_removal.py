@@ -116,6 +116,17 @@ def test_what_something_else_uses_is_released_intact(monkeypatch: pytest.MonkeyP
     assert obj.data == mesh
 
 
+def test_what_a_fake_user_protects_is_released_intact(monkeypatch: pytest.MonkeyPatch) -> None:
+    obj, mesh = _placeholder("Protected")
+    obj.use_fake_user = True
+    [spare] = _objects(1)
+    calls = _counted(monkeypatch, lambda _: False)
+    outcome = datablock_removal.remove_unused({"a": mesh, "b": obj, "spare": spare})
+    assert outcome == datablock_removal.RemovalOutcome(removed_keys={"spare"}, released_keys={"a", "b"})
+    assert calls == [1]
+    assert obj.data == mesh
+
+
 def test_a_holder_doesnt_keep_one_from_removal() -> None:
     obj, mesh = _placeholder("Staged")
     staging = bpy.data.collections.new("Staging")

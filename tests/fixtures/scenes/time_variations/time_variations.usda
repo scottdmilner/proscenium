@@ -4,7 +4,8 @@
 # - Mover's translate moves it; Blink is invisible from 10 on;
 # - Skew is sheared throughout, its shear changing; Shearing is unsheared until 10 and sheared after;
 # - Grows is basis curves, a placeholder box, whose extent grows; Flicker is a Volume whose extent is blocked
-#   until 10 and from 20, so it is a marker, then a box, then a marker again;
+#   until 10 and from 20, so it is a marker, then a box, then a marker again, and which is unsheared until 10 and
+#   sheared after, so its box exists before its shear does;
 # - Scatter is a point instancer without ids: two points, a third from 10 until 20, and the second point's
 #   prototype Stone, not Pebble, from 10 until 20;
 # - Still is a mesh nothing varies on.
@@ -99,8 +100,13 @@ def Xform "World"
             10: [(0, 0, 0), (1, 1, 1)],
             20: None,
         }
-        double3 xformOp:translate = (9, 0, 0)
-        uniform token[] xformOpOrder = ["xformOp:translate"]
+        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (9, 0, 0, 1) )
+        matrix4d xformOp:transform.timeSamples = {
+            0: ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (9, 0, 0, 1) ),
+            10: ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (9, 0, 0, 1) ),
+            20: ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (9, 0, 0, 1) ),
+        }
+        uniform token[] xformOpOrder = ["xformOp:transform"]
     }
 
     def PointInstancer "Scatter"

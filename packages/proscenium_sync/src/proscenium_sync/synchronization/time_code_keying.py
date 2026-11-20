@@ -9,15 +9,15 @@ which a frames modifier first in its object's stack shows for the sample its key
 (attribute_samples); every such modifier shows the display's one frames group, a shared node group.
 
 A copy keyed for the first time gets its action, made and held in the prepared work, keyed at the generation's own time
-code and at the time codes cached before with what its object and shear parent show, which they showed there, since they
-weren't keyed; one whose bounds are first sampled shows its mesh's own positions there. A copy the plan draws only at a
-cached time code has its partition made, as preparation makes one, and linked into the destination, keyed hidden where
-the generation showed itself; a copy a plan lacks is keyed hidden at that time code. A copy sheared at a cached time
-code but not at the generation's own gets a shear parent, made, held, and linked into the destination, identity at the
-time codes it isn't sheared at; a copy sheared at its own but not at a cached time code keeps its parent, identity
-there. Each change to a published resource has its undo in the prepared work before it's made, so a failing call removes
-the keys and samples it added and the modifiers it made, unparents and unlinks what it parented, and its prepared work
-is disposed of (CACHE-03).
+code, at the time codes cached before, and at those the call keyed before, with what its object and shear parent show,
+which they showed there, since they weren't keyed; one whose bounds are first sampled shows its mesh's own positions
+there. A copy the plan draws only at a cached time code has its partition made, as preparation makes one, and linked
+into the destination, keyed hidden at those time codes; a copy a plan lacks is keyed hidden at that time code. A copy
+sheared at a cached time code but not at the generation's own gets a shear parent, made, held, and linked into the
+destination, identity at the time codes it isn't sheared at; a copy sheared at its own but not at a cached time code
+keeps its parent, identity there. Each change to a published resource has its undo in the prepared work before it's
+made, so a failing call removes the keys and samples it added and the modifiers it made, unparents and unlinks what it
+parented, and its prepared work is disposed of (CACHE-03).
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def key_time_codes(  # noqa: PLR0913 - the plans, what they key, and the generat
     published generation lacks, as one appearing only at a cached time code, is Phase D's. Raises whatever Blender
     raises.
     """
-    call = _CallKeying(published, destination, (own, *cached_before), work)
+    call = _CallKeying(published, destination, [own, *cached_before], work)
     for time_code, plan in plans.items():
         with contextlib.ExitStack() as views:  # each view released on return or raise (SNAP-13)
 
@@ -91,6 +91,8 @@ def key_time_codes(  # noqa: PLR0913 - the plans, what they key, and the generat
                 return views.enter_context(memoryview(buffer))
 
             call.key_plan(time_code, plan, varying, view)
+        # Anything made at a later time code didn't exist at this one, so it's keyed with its initial value here too.
+        call.shown_before.append(time_code)
     return call.changes
 
 
@@ -99,7 +101,7 @@ class _CallKeying:
 
     published: manifests.Manifest
     destination: bpy.types.Collection
-    shown_before: Sequence[float]  # the generation's own time code and those cached before
+    shown_before: list[float]  # the generation's own time code, those cached before, and those this call keyed
     work: PreparationResources
     keys: dict[manifests.CopyResourceIdentity, str]  # each copy's resource's entry key, made ones included
     changes: dict[str, manifests.ManifestEntryChange]
@@ -110,7 +112,7 @@ class _CallKeying:
         self,
         published: manifests.Manifest,
         destination: bpy.types.Collection,
-        shown_before: Sequence[float],
+        shown_before: list[float],
         work: PreparationResources,
     ) -> None:
         self.published, self.destination, self.shown_before, self.work = published, destination, shown_before, work
@@ -355,8 +357,9 @@ class _CallKeying:
             assert isinstance(group, bpy.types.NodeTree)
             return group
         key = self.frames_group_key = manifests.new_entry_key()
-        group = attribute_samples.new_frames_group(attribute_samples.POSITIONS)
+        group = bpy.data.node_groups.new("Proscenium frames", "GeometryNodeTree")
         self.work.track(key, manifests.RepresentationRole.NODE_GROUP, group)
+        attribute_samples.populate_frames_group(group, attribute_samples.POSITIONS)
         self.changes[key] = manifests.ManifestEntryChange([], manifests.RepresentationRole.NODE_GROUP, [])
         return group
 
@@ -376,7 +379,8 @@ def _new_shear_parent(
 ) -> bpy.types.Object:
     """A shear parent for obj, identity, made, held, linked into the call's destination, and assigned obj's action.
 
-    object_and_action_keys are the entry keys of obj and of its action.
+    It parents obj and, if the copy has one, its other form's object. object_and_action_keys are the entry keys of obj
+    and of its action.
     """
     object_key, action_key = object_and_action_keys
     parent_key = call.keys[parent_identity] = manifests.new_entry_key()
@@ -385,10 +389,6 @@ def _new_shear_parent(
     parent.hide_select = True  # so a pick lands on the object, as preparation's
     call.work.rollback_actions.append(functools.partial(call.destination.objects.unlink, parent))
     call.destination.objects.link(parent)
-    basis = obj.matrix_basis.copy()
-    call.work.rollback_actions.append(functools.partial(_unparent, obj, basis))
-    obj.parent = parent
-    obj.matrix_basis = basis  # the parent is the identity, so obj shows what it showed
     action = obj.animation_data.action if obj.animation_data is not None else None
     assert action is not None  # the copy's, made first
     parent.animation_data_create().action = action
@@ -396,7 +396,17 @@ def _new_shear_parent(
     call.changes[parent_key] = manifests.ManifestEntryChange(
         entry.source_entity_paths, parent_identity.role, [action_key], parent_identity.object_index_in_copy
     )
-    call.use(object_key, parent_key)
+    other_identity = manifests.CopyResourceIdentity(manifests.RepresentationRole.OBJECT, parent_identity.entity, 1)
+    forms = [(obj, object_key)]
+    if (other_key := call.keys.get(other_identity)) is not None and (other := call.datablock(other_key)) is not None:
+        assert isinstance(other, bpy.types.Object)  # a copy's object
+        forms.append((other, other_key))
+    for form, form_key in forms:
+        basis = form.matrix_basis.copy()
+        call.work.rollback_actions.append(functools.partial(_unparent, form, basis))
+        form.parent = parent
+        form.matrix_basis = basis  # the parent is the identity, so the form shows what it showed
+        call.use(form_key, parent_key)
     return parent
 
 

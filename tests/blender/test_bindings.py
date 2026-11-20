@@ -9,6 +9,7 @@ from __future__ import annotations
 import gc
 from dataclasses import replace
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import bpy
 import pytest
@@ -181,6 +182,30 @@ def test_two_indexes_stop_creation(bindings: Bindings, tmp_path: Path) -> None:
         binding_on_file(bindings, _scene(), _root(tmp_path / "other"))
     assert len(bpy.data.collections) == collections
     assert len(bindings.in_scene(_scene())) == 1
+
+
+@pytest.mark.parametrize(
+    ("properties", "present"),
+    [
+        pytest.param({NAMESPACE: {"other": {}}}, False, id="missing-record"),
+        pytest.param({NAMESPACE: {binding_records.INDEX_KEY: None}}, False, id="null-record"),
+        pytest.param({NAMESPACE: {binding_records.INDEX_KEY: 0}}, True, id="zero-record"),
+        pytest.param({NAMESPACE: False}, True, id="false-namespace"),
+    ],
+)
+def test_index_discovery_finds_every_stored_index_value(properties: dict[str, object], present: bool) -> None:
+    # A damaged namespace or a falsy record is an unreadable index, found so creation refuses; a null one is none.
+    text = bpy.data.texts.new("Renamed index")
+    for key, value in properties.items():
+        text[key] = value
+    assert binding_records.index_texts() == ([text] if present else [])
+
+
+def test_binding_enumeration_reads_each_index_once(bindings: Bindings) -> None:
+    handles = [bindings.create_binding(_scene()) for _ in range(2)]
+    with patch.object(id_property_records, "stored", wraps=id_property_records.stored) as copies:
+        assert bindings.in_scene(_scene()) == handles
+    assert [call.args[1] for call in copies.call_args_list].count(binding_records.INDEX_KEY) == 1
 
 
 def test_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) -> None:

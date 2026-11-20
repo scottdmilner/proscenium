@@ -73,11 +73,6 @@ struct PlannedResource {
   std::vector<std::size_t> dependencyResourceIndices;  // dependencies in Plan::resources
 };
 
-// A unit of display replacement, owning its resources.
-struct Partition {
-  std::vector<std::size_t> resourceIndices;
-};
-
 // A display element and the source entity it represents (interaction-contract.md "Two Layers and the Live Stage").
 struct CorrespondenceEntry {
   std::size_t objectResourceIndex;  // in Plan::resources: the object that shows it
@@ -99,7 +94,6 @@ struct GeometryDescription {
 struct Plan {
   PXR_NS::UsdTimeCode timeCode;
   PlanningContext context;
-  std::vector<Partition> partitions;
   std::vector<PlannedResource> resources;
   std::vector<CorrespondenceEntry> correspondence;  // one per drawn copy, in the copies' order
   // The drawn copies, in source order, one element (or 16) per copy.

@@ -25,8 +25,6 @@ if TYPE_CHECKING:
 
     from proscenium_sync.source_access import BindingId
 
-    # What one binding index says about an identity (decide).
-    Entry = int | None | canonical_candidate.UnreadableIndexEntry
     # By binding: its destination's session_uid.
     Index = Mapping[BindingId, int | None] | canonical_candidate.UnreadableIndexEntry
 
@@ -80,7 +78,6 @@ class IdentityCandidates:
     """One binding identity's candidates, and the rule's decision on them."""
 
     candidates: tuple[BindingRecord, ...]  # in the order found
-    index_entries: tuple[Entry, ...]  # what each binding index naming the identity, or unreadable, says
     decision: canonical_candidate.CanonicalDecision  # its canonical position is a position in candidates
 
     def canonical_record(self) -> BindingRecord | None:
@@ -134,14 +131,14 @@ def _record(
 def _identity(
     binding_id: BindingId, candidates: Sequence[BindingRecord], indexes: Sequence[Index]
 ) -> IdentityCandidates:
-    """The identity's candidates, index entries, and decision."""
+    """The identity's candidates and decision."""
     entries = tuple(
         index if isinstance(index, canonical_candidate.UnreadableIndexEntry) else index[binding_id]
         for index in indexes
         if isinstance(index, canonical_candidate.UnreadableIndexEntry) or binding_id in index
     )
     uids = [r.collection.session_uid for r in candidates]
-    return IdentityCandidates(tuple(candidates), entries, canonical_candidate.decide(uids, entries))
+    return IdentityCandidates(tuple(candidates), canonical_candidate.decide(uids, entries))
 
 
 def _indexes() -> list[Index]:

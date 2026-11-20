@@ -221,10 +221,11 @@ class BindingStages:
         stage = self._ensure_evaluation_stage_matches_source(payload_policy)
         if layers is not None:
             by_identifier = {layer.identifier: layer for layer in contributing_layers(stage)}
-            unknown = sorted(set(layers) - by_identifier.keys())
+            requested_identifiers = set(layers)
+            unknown = sorted(requested_identifiers - by_identifier.keys())
             if unknown:
                 raise ValueError(f"Not contributing layers of the binding: {', '.join(unknown)}")
-            Sdf.Layer.ReloadLayers({by_identifier[identifier] for identifier in layers})
+            Sdf.Layer.ReloadLayers({by_identifier[identifier] for identifier in requested_identifiers})
             return
         # A reload that changes composition can bring in a stale layer another tool holds.
         reloaded: set[Sdf.Layer] = set()

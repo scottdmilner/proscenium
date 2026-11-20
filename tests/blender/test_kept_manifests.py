@@ -6,9 +6,10 @@ record; each expected manifest is the one the test wrote or built.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import bpy
+import pytest
 
 from proscenium_sync.persistence import id_property_records, manifests
 from proscenium_sync.persistence.id_property_records import LoadedRecord, RefusedRecord
@@ -19,8 +20,6 @@ from support.manifests import key, object_change, object_entry
 
 if TYPE_CHECKING:
     from types import ModuleType
-
-    import pytest
 
 
 def _decodes(monkeypatch: pytest.MonkeyPatch) -> list[bpy.types.Collection]:
@@ -144,6 +143,34 @@ def test_partitions_are_kept_beside_the_manifest_through_writes_by_entry() -> No
     rebuilt = kept_manifests.published_partitions(destination, _read(destination))
     assert rebuilt is not partitions
     assert _entry_keys(rebuilt, "/World/A") == {key("a")}
+
+
+@pytest.mark.parametrize("whole", [False, True], ids=["entries", "whole"])
+@pytest.mark.parametrize("failure", ["persistence", "installation"])
+def test_a_failed_write_discards_the_derived_cache(monkeypatch: pytest.MonkeyPatch, whole: bool, failure: str) -> None:
+    destination, before = _destination()
+    partitions = kept_manifests.published_partitions(destination, before)
+    c = bpy.data.objects.new("C", None)
+    after = before.updated({key("c"): object_change("/World/C")}, removed=[key("a")], created={key("c"): c})
+    decodes = _decodes(monkeypatch)
+    name = "write_manifest" if whole else "write_manifest_entries"
+    module = manifests if failure == "persistence" else kept_manifests
+    target = name if failure == "persistence" else "_keep"
+    original = getattr(module, target)
+
+    def fail_after_write(*args: Any, **kwargs: Any) -> None:
+        original(*args, **kwargs)
+        raise RuntimeError("injected manifest-cache failure")
+
+    with monkeypatch.context() as patch, pytest.raises(RuntimeError, match="injected manifest-cache failure"):
+        patch.setattr(module, target, fail_after_write)
+        if whole:
+            kept_manifests.write_manifest(destination, after)
+        else:
+            kept_manifests.write_manifest_entries(destination, after, [key("c")], [key("a")])
+    assert kept_manifests.published_partitions(destination, before) is not partitions
+    assert _read(destination) == after
+    assert decodes == [destination]
 
 
 def test_partitions_of_another_manifest_are_built_and_not_kept() -> None:

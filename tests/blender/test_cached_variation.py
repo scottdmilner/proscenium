@@ -18,8 +18,8 @@ from pxr import Gf, Usd
 from fixtures import edit_sequence, incremental, time_variations
 from proscenium_sync.persistence import binding_state, id_property_records
 from proscenium_sync.persistence.manifests import RepresentationRole
-from proscenium_sync.results import ResultState
-from proscenium_sync.runtime import ownership
+from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
 from proscenium_sync.synchronization import attribute_samples, time_code_keying
 from support.blend import save_and_reopen
 from support.clean_rebuild import clean_rebuild
@@ -133,11 +133,12 @@ def _clean_at(bindings: Bindings, stage: Usd.Stage, time_code: float) -> dict[st
 def test_each_cached_frame_shows_its_transforms_visibility_and_shear(
     bindings: Bindings, tmp_path: Path, grouping: int
 ) -> None:
-    # CACHE-01, CACHE-09, XFORM-09 to XFORM-11 on F-TIME-VARIATIONS, cached by each grouping: at each cached time
-    # code, and at a frame between two, Mover's and Skew's transforms, Blink's hide flags, Shearing's shear, which
-    # appears after 10, Grows' bounds, through its frames modifier, Flicker, a marker given a box for [10, 20), and
-    # Scatter's points, whose third appears and whose second takes Stone for [10, 20), built by the call, show what a
-    # clean synchronization at that time code, or the latest cached before, does; Still is never keyed.
+    # CACHE-01, CACHE-09, XFORM-09 to XFORM-11 on F-TIME-VARIATIONS, cached by each grouping: at each cached time code,
+    # and at a frame between two, Mover's and Skew's transforms, Blink's hide flags, Shearing's shear, which appears
+    # after 10, Grows' bounds, through its frames modifier, Flicker, a marker given a box for [10, 20) whose shear
+    # parent, needed after 10, parents both its objects, and Scatter's points, whose third appears and whose second
+    # takes Stone for [10, 20), built by the call, show what a clean synchronization at that time code, or the latest
+    # cached before, does; Still is never keyed.
     with time_variations.time_variations(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage, scene.synchronized)
         for call in scene.cache_groupings[grouping]:
@@ -149,6 +150,18 @@ def test_each_cached_frame_shows_its_transforms_visibility_and_shear(
             expected = _clean_at(bindings, scene.stage, time_code)
             _set_frame(frame)
             _assert_shown(displayed_copies(handle.binding_id, evaluated=True), expected, frame)
+
+
+def test_one_call_before_the_generations_time_code_shows_each_frame(bindings: Bindings, tmp_path: Path) -> None:
+    # CACHE-01, CACHE-09 on F-TIME-VARIATIONS, synchronized at 20 and cached at 0, 5, 10, and 15 by one call: Scatter's
+    # points the call builds at 10 and Flicker's box it makes there are hidden at 0 and 5, which it keyed before them.
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, 20.0)
+        assert handle.cache([0.0, 5.0, 10.0, 15.0]).state is not ResultState.FATAL_FAILURE
+        for time_code in (0.0, 5.0, 10.0, 15.0, 20.0):
+            expected = _clean_at(bindings, scene.stage, time_code)
+            _set_frame(time_code)
+            _assert_shown(displayed_copies(handle.binding_id, evaluated=True), expected, time_code)
 
 
 def test_synchronizing_again_removes_what_a_cache_call_added(bindings: Bindings, tmp_path: Path) -> None:
@@ -225,6 +238,30 @@ def test_a_failing_call_takes_back_its_samples(
         assert not grows.modifiers
         assert isinstance(grows.data, bpy.types.Mesh)
         assert not any("@" in attribute.name for attribute in grows.data.attributes)
+
+
+def test_a_failing_frames_group_leaves_no_untracked_node_group(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # TXN-08/CACHE-03: the group is tracked when allocated, so one whose population fails is disposed of.
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        destination = bpy.data.collections["Shot"]
+        published, before = published_generation(handle.binding_id, destination), datablocks()
+        records = _records(destination)
+        with monkeypatch.context() as patch:
+            patch.setattr(attribute_samples, "_SAMPLE_SOCKET", "not the actual socket")
+            result = handle.cache([5.0])
+        assert result.state is ResultState.FATAL_FAILURE
+        assert any(
+            d.code is DiagnosticCode.PREPARATION_FAILED and "Expected input Sample" in d.message
+            for d in result.diagnostics
+        )
+        assert published_generation(handle.binding_id, destination) == published
+        assert _records(destination) == records
+        assert datablocks() == before
+        assert pending_cleanup.nothing_pending(handle.binding_id)
+        assert handle.cache([5.0]).state is not ResultState.FATAL_FAILURE
 
 
 def test_a_failing_call_takes_back_the_box_it_made(

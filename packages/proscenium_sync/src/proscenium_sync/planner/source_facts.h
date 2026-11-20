@@ -29,6 +29,8 @@ struct SourceInfoTokens {
   // int64 array, on a point instancer that authors ids: each point's id, which names its copies (DECISIONS.md "Point
   // instancers"). Hydra keeps none. A UsdImaging attribute data source, so animated ids read at the chain's time.
   static const PXR_NS::TfToken& PointIds();
+  // token array: the point instancer's forwarded USD prototype roots, in prototype-index order, before rerooting.
+  static const PXR_NS::TfToken& PointPrototypeOrigins();
   // float3 array, on a gprim other than a mesh with an authored extent: that extent, a UsdImaging attribute data
   // source, so it reads at the chain's time. Hydra's extent reads a value block there as zeros, a box with no size;
   // this reads it as no value, so the planner draws the empty marker it calls for (MODEL-05).
@@ -45,8 +47,8 @@ PXR_NS::HdContainerDataSourceHandle SourceInfo(const PXR_NS::UsdPrim& prim, bool
 
 // Whether a fact the filter adds for `prim` reads its `property`, which Hydra doesn't dirty an edit to: its authored
 // purpose visibility, the op order a transform-stack reset is read from, a point instancer's ids, or any property of a
-// prim whose extent USD computes for the filter (ComputesExtent), which may read it. A prim's type and an instance
-// root's prototype change only with a resync, which Hydra reports.
+// prim whose extent USD computes for the filter (ComputesExtent), which may read it. A prim's type, an instance root's
+// prototype, and a point instancer's prototype targets change only with a resync, which Hydra reports.
 bool FactReadsProperty(const PXR_NS::UsdPrim& prim, const PXR_NS::TfToken& property);
 
 // Whether USD computes the extent of `prim` for the filter when none is authored: gprims other than meshes, so the

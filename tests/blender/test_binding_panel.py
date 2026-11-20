@@ -8,13 +8,16 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import bpy
 import pytest
 
 from fixtures import interaction
 from proscenium.interface import binding_panel
+from proscenium_sync.persistence import binding_state
 from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import binding_operations
 from support import binding_copy_operations
 from support.recording_layout import DrawnOperator, RecordingLayout
 
@@ -59,6 +62,24 @@ def test_each_binding_shows_its_state_and_a_button(bindings: Bindings, tmp_path:
         assert _drawn().labels == [("Shot", "UNLINKED", True), ("May be out of date", "NONE", True)]
         assert handle.synchronize(0.0).state is ResultState.FATAL_FAILURE
         assert _drawn().labels[1] == ("May be out of date; last attempt failed", "NONE", True)
+
+
+def test_statuses_resolve_each_binding_and_generation_once(bindings: Bindings, tmp_path: Path) -> None:
+    with interaction.kind_hierarchy(tmp_path) as scene:
+        handles = [bindings.create_binding(_scene(), name=name) for name in ("A", "B")]
+        for handle in handles:
+            handle.attach(scene.stage)
+            assert handle.synchronize(0).is_success
+        with (
+            patch.object(binding_operations, "find_binding", wraps=binding_operations.find_binding) as individual,
+            patch.object(binding_state, "read_generation", wraps=binding_state.read_generation) as generations,
+            patch.object(bindings.stages, "get", wraps=bindings.stages.get) as stages,
+        ):
+            statuses = bindings.binding_statuses(_scene())
+        assert (individual.call_count, generations.call_count, stages.call_count) == (0, 2, 2)
+        assert [(s.binding_id, s.attached, s.possibly_out_of_date, s.published) for s in statuses] == [
+            (handle.binding_id, True, False, True) for handle in handles
+        ]
 
 
 def test_a_disabled_binding_shows_why_and_no_button(bindings: Bindings) -> None:

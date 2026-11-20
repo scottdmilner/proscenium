@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import bpy
 import pytest
@@ -101,6 +102,13 @@ def test_a_change_writes_only_its_entries(bindings: Bindings) -> None:
     assert list(group.keys()) == [key("object")]  # the stored group, changed in place
     assert group[key("object")].to_dict() == kept
     assert dict(runtime.pending_cleanup.ledger().record.entries).keys() == {key("object")}  # ty: ignore[unresolved-attribute]
+
+
+def test_a_ledger_update_reads_the_ledger_once(bindings: Bindings) -> None:
+    runtime.pending_cleanup.set_ledger_entries(_entries(_binding(bindings)))
+    with patch.object(cleanup_ledgers, "read_ledger", wraps=cleanup_ledgers.read_ledger) as reads:
+        runtime.pending_cleanup.set_ledger_entries({}, [key("object")])
+    assert reads.call_count == 1
 
 
 def test_a_removed_datablock_leaves_an_entry_with_nothing_to_dispose_of(bindings: Bindings) -> None:

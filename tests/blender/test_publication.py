@@ -19,7 +19,7 @@ from proscenium_sync.persistence import binding_state, id_property_records, mani
 from proscenium_sync.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
 from proscenium_sync.persistence.id_property_records import LoadedRecord
 from proscenium_sync.results import DiagnosticCode, Result, ResultState
-from proscenium_sync.runtime import ownership, pending_cleanup
+from proscenium_sync.runtime import copy_partitions, kept_manifests, ownership, pending_cleanup
 from proscenium_sync.source_access.binding_settings import PayloadPolicy, new_settings
 from proscenium_sync.synchronization import application, publication
 from support.blend import save_and_reopen
@@ -163,6 +163,67 @@ def test_a_failed_publication_keeps_the_published_generation(
         assert all(ownership.of(obj).claims for obj in _destination().objects)
         assert datablocks() == before
         assert _ledger_entries() == {}
+
+
+# Each write publication makes, by what's patched to fail after it; the partition cache is kept beside the manifest.
+_WRITTEN: dict[str, tuple[Any, str]] = {
+    "manifest": (manifests, "write_manifest_entries"),
+    "generation": (binding_state, "write_generation"),
+    "partitions": (copy_partitions.PublishedPartitions, "replace_entries"),
+}
+
+
+@pytest.mark.parametrize(
+    ("write", "existing"),
+    [
+        *((write, existing) for write in PUBLICATION_WRITES for existing in (False, True)),
+        # Only a replacement has kept partitions to update: the review's failure, after the manifest is stored.
+        ("partitions", True),
+    ],
+)
+def test_a_failure_after_persistence_restores_the_published_records(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, write: str, existing: bool
+) -> None:
+    # TXN-02/TXN-06: a writer may persist successfully and then raise, so its own mutation needs undo too.
+    with transaction.publication_failure(tmp_path) as scene:
+        handle = _binding(bindings, scene, PayloadPolicy.LOAD_ALL)
+        partitions = None
+        if existing:
+            assert handle.synchronize(10).state is ResultState.SUCCESS
+            loaded = kept_manifests.read_manifest(_destination())
+            assert isinstance(loaded, LoadedRecord)
+            partitions = kept_manifests.published_partitions(_destination(), loaded.record)
+        expected_paths = None if partitions is None else set(partitions.source_paths())
+        before, resources = _published(handle), datablocks()
+        module, name = _WRITTEN[write]
+        original = getattr(module, name)
+        calls: list[None] = []
+
+        def fail_after_write(*args: Any, **kwargs: Any) -> None:
+            original(*args, **kwargs)
+            calls.append(None)
+            if len(calls) == 1:
+                raise RuntimeError("injected post-persistence failure")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(module, name, fail_after_write)
+            result = handle.synchronize(12, full_rebuild=True)
+        assert result.state is ResultState.FATAL_FAILURE
+        assert [d.code for d in result.diagnostics] == [DiagnosticCode.PUBLICATION_FAILED]
+        assert _published(handle) == before
+        assert datablocks() == resources
+        assert not _ledger_entries()
+        attempt = _last_attempt(handle)
+        assert isinstance(attempt, LoadedRecord)
+        assert attempt.record.diagnostics == result.diagnostics
+        if partitions is not None:
+            # The restored manifest's partitions are built again, not the ones the failed write changed.
+            restored = kept_manifests.read_manifest(_destination())
+            assert isinstance(restored, LoadedRecord)
+            rebuilt = kept_manifests.published_partitions(_destination(), restored.record)
+            assert rebuilt is not partitions
+            assert set(rebuilt.source_paths()) == expected_paths
+        assert handle.synchronize(12, full_rebuild=True).state is ResultState.SUCCESS
 
 
 @pytest.mark.parametrize("step", transaction.BEFORE_PUBLICATION)

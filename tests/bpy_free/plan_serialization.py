@@ -43,7 +43,6 @@ def contents(plan: planner.Plan) -> dict[str, Any]:
     """Every part of the plan, in its order, as JSON values: what equal plans share."""
     groups, single = plan.batch_groups(1)
     return {
-        "partitions": [list(p.resource_indices) for p in plan.partitions],
         "resources": [
             [
                 r.role,

@@ -107,6 +107,15 @@ bool ReadPrim(const HdSceneIndexBase& scene, const SdfPath& path, PrimRecord& re
 
 }  // namespace
 
+VtArray<TfToken> ReadPointPrototypeOrigins(const Snapshot& snapshot, const SdfPath& path) {
+  const HdSceneIndexPrim prim = snapshot.sceneIndex->GetPrim(path);
+  if (!prim.dataSource) return {};
+  const auto info = HdContainerDataSource::Cast(prim.dataSource->Get(SourceInfoTokens::Schema()));
+  return info ? ValueOf(HdTypedSampledDataSource<VtArray<TfToken>>::Cast(
+                    info->Get(SourceInfoTokens::PointPrototypeOrigins())))
+              : VtArray<TfToken>{};
+}
+
 PrimTable ReadPrims(const Snapshot& snapshot) {
   SdfPathVector paths;
   for (const SdfPath& path : HdSceneIndexPrimView(snapshot.sceneIndex, SdfPath::AbsoluteRootPath()))

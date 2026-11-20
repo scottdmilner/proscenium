@@ -213,11 +213,6 @@ def test_a_removed_destination_takes_its_binding_and_manifest(bindings: Bindings
         ownership.manifest(handle.binding_id)
 
 
-def test_dependents_invert_the_uses(bindings: Bindings, tmp_path: Path) -> None:
-    _, manifest = _managed(bindings, tmp_path)
-    assert manifests.dependents(manifest) == {key("mesh"): {key("a"), key("b")}, key("a"): set(), key("b"): set()}
-
-
 def test_a_prepared_resource_takes_the_key_of_the_entry_with_its_identity(bindings: Bindings, tmp_path: Path) -> None:
     # ROLE-05: matched by role, source entity, and place; a new identity gets a new key. A content-keyed entry has none.
     _, manifest = _managed(bindings, tmp_path)

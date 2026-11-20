@@ -1,9 +1,11 @@
 #include "diagnostics.h"
 
+#include <algorithm>
 #include <map>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -61,32 +63,67 @@ void AppendDiagnosticContext(Diagnostic& diagnostic) {
 }  // namespace
 
 void SummarizeRepeatedDiagnostics(Diagnostics& diagnostics) {
-  using Problem = std::tuple<DiagnosticCode, std::string, SdfPath, std::string, std::string>;
-  std::map<Problem, std::size_t> reported;  // each problem's diagnostics, listed or not
-  std::map<Problem, std::size_t> counting;  // the position of each problem's count, in summarized
-  Diagnostics summarized;
-  for (Diagnostic& diagnostic : diagnostics) {
-    const Problem problem{diagnostic.code, diagnostic.message, diagnostic.propertyPath, diagnostic.assetIdentifier,
-                          diagnostic.fallbackDescription};
-    const std::size_t before = reported[problem]++;
-    if (before < kListedPerProblem) {
-      AppendDiagnosticContext(diagnostic);
-      summarized.push_back(std::move(diagnostic));
-    } else if (before == kListedPerProblem) {
-      counting.emplace(problem, summarized.size());
-      summarized.push_back({diagnostic.code,
-                            {},
-                            diagnostic.message,
-                            diagnostic.propertyPath,
-                            diagnostic.assetIdentifier,
-                            diagnostic.fallbackDescription,
-                            {},
-                            0});
+  if (diagnostics.empty()) return;
+
+  struct ProblemReports {
+    std::size_t first;
+    std::size_t count = 0;
+    std::vector<std::size_t> listedIndices;
+  };
+  std::vector<ProblemReports> groups;
+  const auto sourceLess = [&diagnostics](std::size_t left, std::size_t right) {
+    return std::tie(diagnostics[left].sourcePath, left) < std::tie(diagnostics[right].sourcePath, right);
+  };
+  {
+    // Keys borrow the input's strings, so this map dies before any message is moved or given context.
+    using Problem = std::tuple<DiagnosticCode, std::string_view, SdfPath, std::string_view, std::string_view>;
+    std::map<Problem, std::size_t> groupIndices;
+    for (std::size_t diagnosticIndex = 0; diagnosticIndex < diagnostics.size(); ++diagnosticIndex) {
+      const Diagnostic& diagnostic = diagnostics[diagnosticIndex];
+      const Problem problem{diagnostic.code, diagnostic.message, diagnostic.propertyPath, diagnostic.assetIdentifier,
+                            diagnostic.fallbackDescription};
+      const auto [found, inserted] = groupIndices.emplace(problem, groups.size());
+      if (inserted) groups.push_back({diagnosticIndex, 0, {}});
+      ProblemReports& group = groups[found->second];
+      ++group.count;
+      if (group.count == 1) continue;
+      if (group.count == 2) {
+        group.listedIndices.reserve(kListedPerProblem);
+        group.listedIndices.push_back(group.first);
+      }
+      // The first kListedPerProblem in source order, whatever order Hydra reported them in.
+      auto& listed = group.listedIndices;
+      if (listed.size() == kListedPerProblem) {
+        if (!sourceLess(diagnosticIndex, listed.back())) continue;
+        listed.pop_back();
+      }
+      listed.insert(std::lower_bound(listed.begin(), listed.end(), diagnosticIndex, sourceLess), diagnosticIndex);
     }
   }
-  for (const auto& [problem, position] : counting)
-    summarized[position].message +=
-        " (and " + std::to_string(reported[problem] - kListedPerProblem) + " more with the same problem, not listed)";
+
+  Diagnostics summarized;
+  for (const ProblemReports& group : groups) {
+    if (group.count == 1) {
+      AppendDiagnosticContext(diagnostics[group.first]);
+      summarized.push_back(std::move(diagnostics[group.first]));
+      continue;
+    }
+    // Copy the unadorned problem before moving any of its retained reports.
+    Diagnostic count{};
+    if (group.count > kListedPerProblem) {
+      count = diagnostics[group.first];
+      count.sourcePath = {};
+      count.hydraPrimPath = {};
+      count.drawnCopyCount = 0;
+      count.message +=
+          " (and " + std::to_string(group.count - kListedPerProblem) + " more with the same problem, not listed)";
+    }
+    for (const std::size_t diagnosticIndex : group.listedIndices) {
+      AppendDiagnosticContext(diagnostics[diagnosticIndex]);
+      summarized.push_back(std::move(diagnostics[diagnosticIndex]));
+    }
+    if (group.count > kListedPerProblem) summarized.push_back(std::move(count));
+  }
   diagnostics = std::move(summarized);
 }
 

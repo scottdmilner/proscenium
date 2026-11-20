@@ -201,6 +201,14 @@ def has(id_: bpy.types.ID, key: str) -> bool:
     return _is_group(namespace) and key in namespace
 
 
+def has_stored_value(id_: bpy.types.ID, key: str) -> bool:
+    """Whether stored() would give anything but None, without copying it: a damaged namespace, or a value under key."""
+    namespace = id_.get(NAMESPACE)
+    if namespace is None:
+        return False
+    return not _is_group(namespace) or namespace.get(key) is not None
+
+
 def keys(id_: bpy.types.ID) -> list[str]:
     """The keys of id_'s records; none if its namespace is missing or damaged."""
     namespace = id_.get(NAMESPACE)

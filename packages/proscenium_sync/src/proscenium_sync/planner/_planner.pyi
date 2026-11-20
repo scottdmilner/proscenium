@@ -96,10 +96,6 @@ class PlannedResource:
     @property
     def dependency_resource_indices(self) -> tuple[int, ...]: ...  # dependencies in Plan.resources
 
-class Partition:
-    @property
-    def resource_indices(self) -> tuple[int, ...]: ...
-
 class CorrespondenceEntry:
     @property
     def object_resource_index(self) -> int: ...  # in Plan.resources: the object showing this source entity
@@ -144,8 +140,6 @@ class Plan:
     def time_code(self) -> Usd.TimeCode: ...
     @property
     def context(self) -> PlanningContext: ...
-    @property
-    def partitions(self) -> tuple[Partition, ...]: ...
     @property
     def resources(self) -> tuple[PlannedResource, ...]: ...
     # The resources at those positions in resources, in that order, converting only them. IndexError: past the end.

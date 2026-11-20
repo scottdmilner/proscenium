@@ -15,7 +15,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 import bpy
 
@@ -69,22 +69,6 @@ CONFIG = Schema("binding", version=1, record_type=BindingConfig)
 INDEX = Schema("binding index", version=1, record_type=BindingIndex)
 
 
-class WrittenIndex(NamedTuple):
-    """The binding index as a write stored it, and the Text holding it."""
-
-    text: bpy.types.Text
-    index: BindingIndex
-
-
-class CreatedBinding(NamedTuple):
-    """What create stored: the new binding's identifier, destination, and records."""
-
-    binding_id: BindingId
-    destination: bpy.types.Collection
-    config: BindingConfig  # on the destination
-    index: WrittenIndex  # with the binding's entry
-
-
 def new_identifier() -> BindingId:
     """A new, random binding identifier."""
     return BindingId(uuid.uuid4().hex)
@@ -95,8 +79,8 @@ def config_key(binding_id: BindingId) -> str:
     return CONFIG_PREFIX + binding_id
 
 
-def create_binding(scene: bpy.types.Scene, settings: RequestedSettings, name: str) -> CreatedBinding:
-    """Make a binding on scene: its destination, linked under the scene's collection, and its records.
+def create_binding(scene: bpy.types.Scene, settings: RequestedSettings, name: str) -> BindingId:
+    """Make a binding on scene, its destination linked under the scene's collection, and its records; its identifier.
 
     Raises RefusedRecordError, changing nothing, if the binding index can't be read; ValueError if the
     file has more than one.
@@ -107,12 +91,8 @@ def create_binding(scene: bpy.types.Scene, settings: RequestedSettings, name: st
     scene.collection.children.link(destination)
     config = BindingConfig(scene, settings)
     id_property_records.write(destination, config_key(binding_id), CONFIG, config)
-    return CreatedBinding(binding_id, destination, config, _write_entry(text, index, binding_id, destination))
-
-
-def has_config(destination: bpy.types.Collection, binding_id: BindingId) -> bool:
-    """Whether destination stores a configuration record for binding_id, without reading it."""
-    return id_property_records.has(destination, config_key(binding_id))
+    _write_entry(text, index, binding_id, destination)
+    return binding_id
 
 
 def read_index(text: bpy.types.Text) -> LoadedRecord[BindingIndex] | RefusedRecord | None:
@@ -149,11 +129,6 @@ def read_configs() -> Iterator[tuple[bpy.types.Collection, BindingId, LoadedReco
             yield collection, binding_id, result
 
 
-def destination_collection_uids() -> frozenset[int]:
-    """The session_uids of the collections read_configs reads, without reading their records."""
-    return frozenset(c.session_uid for c in bpy.data.collections if c.library is None and binding_ids(c))
-
-
 def index_texts() -> list[bpy.types.Text]:
     """Every local Text holding a binding index record, readable or not.
 
@@ -162,11 +137,11 @@ def index_texts() -> list[bpy.types.Text]:
     (source-access.md#canonical-candidate). A linked Text's index belongs to its library.
     """
     texts = bpy.data.texts
-    return [text for text in texts if text.library is None and id_property_records.stored(text, INDEX_KEY) is not None]
+    return [text for text in texts if text.library is None and id_property_records.has_stored_value(text, INDEX_KEY)]
 
 
-def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
-    """Write a binding's index entry where it has none or one naming no collection; the index written, if any.
+def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection) -> None:
+    """Write a binding's index entry where it has none or one naming no collection.
 
     Makes the index's Text if the file has none.
 
@@ -174,8 +149,8 @@ def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection
     """
     text, index = _index()
     if index.destinations.get(binding_id) is not None:
-        return None
-    return _write_entry(text, index, binding_id, destination)
+        return
+    _write_entry(text, index, binding_id, destination)
 
 
 def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
@@ -202,11 +177,10 @@ def _write_entry(
     index: BindingIndex,
     binding_id: BindingId,
     destination: bpy.types.Collection,
-) -> WrittenIndex:
+) -> None:
     """Write the index with binding_id's entry naming destination, on a new Text if there is none."""
     if text is None:
         text = bpy.data.texts.new(INDEX_NAME)
         text.use_fake_user = True
     written = BindingIndex(index.destinations | {binding_id: destination})
     id_property_records.write(text, INDEX_KEY, INDEX, written)
-    return WrittenIndex(text, written)

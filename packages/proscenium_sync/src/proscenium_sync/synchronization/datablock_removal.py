@@ -62,7 +62,9 @@ def remove_unused[K: Hashable](
     ignored = {h.session_uid for h in holders}
     user_map = current_user_map(list(present.values()))
     users = {key: {u.session_uid for u in user_map[d]} - ignored for key, d in present.items()}
-    undecided = set(present)
+    # user_map names no fake user, so one with a fake user is released here.
+    undecided = {key for key, datablock in present.items() if not datablock.use_fake_user}
+    outcome.released_keys.update(present.keys() - undecided)
     while undecided:
         before = len(undecided)
         level = _classify_and_collect_removable(undecided, users, key_of, outcome)

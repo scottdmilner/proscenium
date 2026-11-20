@@ -124,6 +124,7 @@ def cache(
         # Restored whole, since an update by entry that fails partway may have written some entries.
         work.rollback_actions.append(functools.partial(kept_manifests.write_manifest, destination, before))
         ownership.set_manifest_entries(binding_id, changes, created=work.datablocks, published=before)
+        work.rollback_actions.append(functools.partial(_restore_generation, destination, published))
         binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
     except Exception as error:  # noqa: BLE001
         message = f"Recording the cached time codes failed: {error}"
@@ -132,6 +133,13 @@ def cache(
         return report.result(attempted_time_codes=attempted)
     preparation_resources.remove_staging_and_clear_tracking(work)
     return report.result(attempted_time_codes=attempted)
+
+
+def _restore_generation(destination: bpy.types.Collection, published: binding_state.GenerationMetadata) -> None:
+    """Restore cached-time metadata after a failed write, without rewriting an unchanged generation."""
+    current = binding_state.read_generation(destination)
+    if not isinstance(current, id_property_records.LoadedRecord) or current.record != published:
+        binding_state.write_generation(destination, published)
 
 
 def _varying_copies(

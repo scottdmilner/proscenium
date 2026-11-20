@@ -187,6 +187,20 @@ def test_an_obsolete_resource_something_else_uses_is_released_intact(bindings: B
         assert _ledger() == {}  # released, so no retry deletes it
 
 
+def test_an_obsolete_resource_with_a_fake_user_is_released_intact(bindings: Bindings, tmp_path: Path) -> None:
+    # A fake user protects the object, and so the bounds mesh it uses, though user_map doesn't name it.
+    with transaction.retirement_failure(tmp_path) as scene:
+        handle = _binding(bindings, scene)
+        first, second = scene.time_codes
+        assert handle.synchronize(first).state is ResultState.SUCCESS
+        (kept,) = (o for o in bpy.data.collections["Shot"].objects if prim_name(o) == FAILING)
+        mesh = kept.data
+        kept.use_fake_user = True
+        assert handle.synchronize(second, full_rebuild=True).state is ResultState.SUCCESS
+        assert kept.name in bpy.data.objects and kept.data == mesh and kept.users_collection == ()
+        assert _ledger() == {}
+
+
 def test_a_retirement_the_ledger_cant_record_raises(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

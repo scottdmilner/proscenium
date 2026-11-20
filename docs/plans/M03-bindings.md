@@ -241,7 +241,7 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - reading it through the record framework took 32 ms.
   - **Hot paths:** operations that run often, such as selection mapping, go through D8's runtime indexes built from the manifest, not through the records.
   - **An immutable value.** An entry's covers and uses are tuples, and a manifest's entries a read-only view of a dict nothing else holds, so D8's indexes hand out the manifest they hold without a copy, and no caller can change it apart from the record and the ownership index. Callers still pass lists. Freezing adds about 0.6 ms to the 10.2 ms that building a 10,000-entry manifest from stored values takes, where a copy at each lookup would cost about the whole build (bpy wheel, best of 5).
-  - **Usage:** each entry stores only the managed resources it uses. `dependents` inverts them. Unmanaged users aren't stored, since nothing persistent can track them; M7 reads them from Blender's user graph when an operation needs them (OWN-08).
+  - **Usage:** each entry stores only the managed resources it uses. Managed dependents are derived by inverting those references. Unmanaged users aren't stored, since nothing persistent can track them; M7 reads them from Blender's user graph when an operation needs them (OWN-08).
   - **Evidence:** the ownership index (D8) gives the claims on each datablock a manifest names, `indexes.claims_on()`.
     - It reads each destination once, though a linked-copy scene's two configurations both point at one.
     - A manifest names a datablock at most once, so two claims on a datablock always come from two manifests: that's ambiguity.
@@ -260,7 +260,6 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - nothing stored on the managed datablocks;
     - the claims (OWN-16): a duplicated object unmanaged; a datablock two manifests name with two claims, one from each; a manifest naming a datablock twice refused; each copy's content claimed by its own manifest after a full-copy scene; one claim each after a linked-copy scene; content deleted in the interface still claimed; and a removed datablock's entry claiming nothing;
     - one binding's manifest, through a configuration that can't be read, and with its destination removed;
-    - dependents;
     - invalid and newer manifests refused, claiming nothing, and reported, and a newer one never overwritten.
 
 - **D6, published generation, last attempt, and pending cleanup** (as sketched with the user).

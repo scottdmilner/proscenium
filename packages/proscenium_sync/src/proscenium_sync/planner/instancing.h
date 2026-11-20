@@ -89,6 +89,8 @@ class InstanceResolver {
   const std::vector<DrawnCopy> top_{DrawnCopy()};
   const std::vector<DrawnCopy> none_;
   std::unordered_map<PXR_NS::SdfPath, std::vector<DrawnCopy>, PXR_NS::SdfPath::Hash> cache_;  // by prototype root
+  // Point instancers' local point transforms, by Hydra path.
+  std::unordered_map<PXR_NS::SdfPath, std::vector<PXR_NS::GfMatrix4d>, PXR_NS::SdfPath::Hash> pointTransforms_;
   std::vector<Diagnostic> diagnostics_;
 };
 
