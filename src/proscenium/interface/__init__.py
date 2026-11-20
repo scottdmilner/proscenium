@@ -3,11 +3,13 @@
 It uses only the packages' public APIs, so it can be replaced without touching the rest. It exports its modules: the
 Source Select tool and its sidebar panel (source_select_tool), the binding panel (binding_panel), the source inspector
 (source_inspector), the cook's node tree (cook_node_types), the tree's layer (cook_tree_layer), the cook panel
-(cook_panel), and its registration (interface_registration), which proscenium.addon calls.
+(cook_panel), the Viewer's stage in the widgets (cook_inspector), and its registration (interface_registration),
+which proscenium.addon calls.
 """
 
 from . import (
     binding_panel,
+    cook_inspector,
     cook_node_types,
     cook_panel,
     cook_tree_layer,
@@ -18,6 +20,7 @@ from . import (
 
 __all__ = [
     "binding_panel",
+    "cook_inspector",
     "cook_node_types",
     "cook_panel",
     "cook_tree_layer",

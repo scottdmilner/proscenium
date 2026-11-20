@@ -3,8 +3,9 @@
 Each cook writes the tree into a scratch layer and moves it into the root layer of a stage kept for that tree, which
 the tree's TreeCook holds, so the cook's state, and the stages it returns, last between cooks (docs/plans/cook-module.md
 "Input"). The kept cooks are keyed by the tree's session UID and hold no Blender data; loading a file drops them. The
-active Viewer is the one the tree's Viewer dropdown names. The tree's diagnostics, each node's report, and each
-stage the cook returns, as its root layer, are printed to the console. Nothing is handed to a binding.
+active Viewer is the one the tree's Viewer dropdown names. The tree's diagnostics, each node's report, and which
+nodes have a stage are printed to the console, and the Viewer's stage shows in the cook inspector's panels below,
+which the kept cook holds it for. Nothing is handed to a binding.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from pxr import Sdf, Usd
 
 import proscenium_cook
 
-from . import cook_node_types, cook_tree_layer
+from . import cook_inspector, cook_node_types, cook_tree_layer
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -27,23 +28,31 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class KeptCook:
-    """A tree's stage and the cook that holds it, with the base directory the cook was made with."""
+    """A tree's stage and the cook that holds it, with the base directory the cook was made with.
+
+    It holds the last cook's Viewer stage too, while the cook inspector shows it.
+    """
 
     tree_stage: Usd.Stage
     tree_cook: proscenium_cook.TreeCook
     base_directory: str | None
+    viewer_stage: Usd.Stage | None = None
 
 
 _kept_cooks: dict[int, KeptCook] = {}
 
 
 def cook_tree(tree: bpy.types.NodeTree) -> proscenium_cook.CookResult:
-    """Cook tree with its active Viewer, writing it into its kept stage first."""
+    """Cook tree with its active Viewer, writing it into its kept stage first, and show the Viewer's stage."""
     kept = _kept_cook(tree)
     scratch = Sdf.Layer.CreateAnonymous("cook_tree")
     cook_tree_layer.write_tree_layer(tree, scratch)
     kept.tree_stage.GetRootLayer().TransferContent(scratch)
-    return kept.tree_cook.cook(active_viewer(tree))
+    viewer = active_viewer(tree)
+    result = kept.tree_cook.cook(viewer)
+    kept.viewer_stage = result.viewer_stage
+    cook_inspector.show_viewer_stage(tree, viewer, result.viewer_stage)
+    return result
 
 
 def active_viewer(tree: bpy.types.NodeTree) -> str | None:
@@ -61,8 +70,9 @@ def tree_stage(tree: bpy.types.NodeTree) -> Usd.Stage | None:
 
 
 def forget_cooks() -> None:
-    """Drop every kept cook, as loading a file does."""
+    """Drop every kept cook, as loading a file does, and with them the stage the cook inspector shows."""
     _kept_cooks.clear()
+    cook_inspector.forget_shown()
 
 
 def cook_report(tree: bpy.types.NodeTree, result: proscenium_cook.CookResult, *, with_tree_layer: bool) -> str:
@@ -81,14 +91,13 @@ def cook_report(tree: bpy.types.NodeTree, result: proscenium_cook.CookResult, *,
             lines.append(f"      {key}: {value!r}")
     if not result.node_reports:
         lines.append("  (none)")
-    for node_id, stage in sorted(result.stage_outputs.items()):
-        lines += [f"--- Stage Output {node_id!r} ---", _stage_text(stage)]
-    if not result.stage_outputs:
-        lines.append("--- No Stage Output has a stage ---")
+    # Which nodes have a stage, not what it holds: the cook inspector shows the Viewer's.
+    lines.append("--- Stages ---")
+    lines += [f"  Stage Output {node_id!r}" for node_id in sorted(result.stage_outputs)]
     if result.viewer_stage is not None:
-        lines += [f"--- Viewer {viewer!r} ---", _stage_text(result.viewer_stage)]
-    else:
-        lines.append(f"--- Viewer {viewer!r} has no stage ---")
+        lines.append(f"  Viewer {viewer!r}")
+    if not result.stage_outputs and result.viewer_stage is None:
+        lines.append("  (none)")
     return "\n".join(lines)
 
 
@@ -174,7 +183,8 @@ def _kept_cook(tree: bpy.types.NodeTree) -> KeptCook:
         stage = Usd.Stage.CreateInMemory()
         kept = KeptCook(stage, proscenium_cook.TreeCook(stage, base_directory), base_directory)
     elif kept.base_directory != base_directory:
-        kept = KeptCook(kept.tree_stage, proscenium_cook.TreeCook(kept.tree_stage, base_directory), base_directory)
+        tree_cook = proscenium_cook.TreeCook(kept.tree_stage, base_directory)
+        kept = KeptCook(kept.tree_stage, tree_cook, base_directory, kept.viewer_stage)
     _kept_cooks[tree.session_uid] = kept
     return kept
 
@@ -185,9 +195,3 @@ def _diagnostic_lines(diagnostics: Iterable[proscenium_cook.NodeDiagnostic]) -> 
         where = f" (at {diagnostic.source_path})" if diagnostic.source_path else ""
         lines.append(f"    {diagnostic.severity.value} {diagnostic.code.value}: {diagnostic.message}{where}")
     return lines
-
-
-def _stage_text(stage: Usd.Stage) -> str:
-    """The stage's root layer, with its identifier: a zone's layer, or a file's, without what it composes."""
-    root_layer = stage.GetRootLayer()
-    return f"(root layer {root_layer.identifier})\n{root_layer.ExportToString()}"

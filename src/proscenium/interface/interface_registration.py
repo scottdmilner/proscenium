@@ -1,9 +1,10 @@
 """Registration of the temporary UI: its scene properties, classes, tool, subscriptions, and the cook's node tree.
 
-proscenium.addon registers it after the synchronizer. After a file loads, the message-bus subscriptions, which a load
-clears, are made again, and after a load, an undo, or a redo, selectability is recomputed from the active tool rather
-than kept as the file or the undo step stored it. After an undo or a redo, the source inspector's tree takes up the
-restored source selection.
+proscenium.addon registers it after the synchronizer. It registers proscenium_ui's widgets once, and each inspector,
+the source inspector and the cook inspector, adds and removes its own views, independently of the other. After a file
+loads, the message-bus subscriptions, which a load clears, are made again, and after a load, an undo, or a redo,
+selectability is recomputed from the active tool rather than kept as the file or the undo step stored it. After an undo
+or a redo, the source inspector's tree takes up the restored source selection.
 """
 
 from __future__ import annotations
@@ -13,9 +14,18 @@ from typing import Any
 import bpy
 from bpy.app.handlers import persistent
 
-from . import binding_panel, cook_node_types, cook_panel, source_inspector, source_select_tool
+from proscenium_ui.property_viewer_widget import display as property_display
+from proscenium_ui.scene_graph_widget import display as scene_graph_display
 
-CLASSES = (*binding_panel.CLASSES, *source_select_tool.CLASSES, *source_inspector.CLASSES, *cook_panel.CLASSES)
+from . import binding_panel, cook_inspector, cook_node_types, cook_panel, source_inspector, source_select_tool
+
+CLASSES = (
+    *binding_panel.CLASSES,
+    *source_select_tool.CLASSES,
+    *source_inspector.CLASSES,
+    *cook_panel.CLASSES,
+    *cook_inspector.CLASSES,  # below the Cook panel
+)
 
 
 @persistent
@@ -43,7 +53,11 @@ def register() -> None:
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.utils.register_tool(source_select_tool.PROSCENIUM_TT_source_select, separator=True)
+    # The widgets, once for both inspectors, which each add their own views.
+    scene_graph_display.register()
+    property_display.register()
     source_inspector.register()
+    cook_inspector.register()
     bpy.app.handlers.load_post.append(_file_loaded)
     bpy.app.handlers.undo_post.append(_undone_or_redone)
     bpy.app.handlers.redo_post.append(_undone_or_redone)
@@ -58,6 +72,9 @@ def unregister() -> None:
     bpy.app.handlers.undo_post.remove(_undone_or_redone)
     bpy.app.handlers.redo_post.remove(_undone_or_redone)
     source_inspector.unregister()
+    cook_inspector.unregister()
+    property_display.unregister()  # would remove any view left
+    scene_graph_display.unregister()
     bpy.utils.unregister_tool(source_select_tool.PROSCENIUM_TT_source_select)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

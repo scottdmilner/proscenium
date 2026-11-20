@@ -207,6 +207,14 @@ def test_relative_path_in_an_unsaved_file_is_reported(extension: ModuleType) -> 
     assert 'def LayerFromFile "Chair_20_File"' in report
 
 
+def test_report_names_the_stages_without_their_contents(extension: ModuleType) -> None:
+    del extension
+    tree, _nodes = _zone_tree()
+    report = cook_panel.cook_report(tree, cook_panel.cook_tree(tree), with_tree_layer=False)
+    assert "  Stage Output 'Stage Output'\n  Viewer 'Viewer'" in report
+    assert 'def Xform "Chair"' not in report  # the zone's layer, which the Viewer's stage holds
+
+
 def test_zone_tree_has_no_incompatible_links(extension: ModuleType) -> None:
     # Every link _zone_tree makes is one the cook takes, the Editable Layer into the Viewer among them.
     del extension
