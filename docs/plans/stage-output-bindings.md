@@ -58,7 +58,7 @@ On each cook, for each Stage Output, keyed by node ID:
 
 ### Reload
 
-A binding's `reload` would reread the zones' anonymous layers and discard what the cook wrote ([node-tree.md](../phase3/node-tree.md), "Reload"). Until that question is settled, the binding UI doesn't offer Reload on a binding a Stage Output made, and the Cook panel says to cook again instead. Telling the bindings apart needs no record of its own, since it's a lookup of the trees' recorded identifiers.
+A binding's `reload` would reread the zones' anonymous layers and discard what the cook wrote ([node-tree.md](../phase3/node-tree.md), "Reload"). The binding UI offers no Reload on any binding, so this plan needs no change for it. Until that question is settled, a Reload added to the binding UI isn't offered on a binding a Stage Output made, and the Cook panel says to cook again instead. Telling the bindings apart needs no record of its own, since it's a lookup of the trees' recorded identifiers.
 
 ## Steps
 
@@ -69,7 +69,6 @@ Each step is one commit, with its tests and docs.
 3. **The Stage Output's scene and binding identifier,** and clearing the identifier on duplicate. The tree's layer doesn't change, and `test_cook_tree_layer` checks that it holds neither property.
 4. **Cooking into bindings:** find or make, attach, set the conversion setting, synchronize, and report. `cook-module.md`'s "A minimal front end" entry changes, since the cook now hands stages to bindings.
 5. **Removing the bindings of deleted nodes and changed scenes,** through the tree's record.
-6. **Hiding Reload** for Stage Output bindings.
 
 ## Tests
 
