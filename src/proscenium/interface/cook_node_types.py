@@ -159,7 +159,7 @@ class PROSCENIUM_NT_cook_tree(bpy.types.NodeTree):  # noqa: N801 - Blender's cla
     """A node tree the cook evaluates into USD stages."""
 
     bl_idname = TREE_IDNAME
-    bl_label = "Proscenium Cook"
+    bl_label = "Proscenium"  # the editor's name in the editor type menu
     bl_icon = "NODETREE"
 
     # The Cook panel's checkbox, kept on the tree so each tree keeps its own.
