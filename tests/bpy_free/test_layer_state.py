@@ -156,10 +156,10 @@ def test_reload_named_layers_from_a_generator(tmp_path: Path) -> None:
     with source_access.dirty_layer(tmp_path) as scene:
         source = binding(scene.caller)
         stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
-        ref = scene.dirty_contributing["ref"]
-        source.reload(PayloadPolicy.LOAD_ALL, (identifier for identifier in [str(ref)]))
+        ref = Sdf.Layer.Find(str(scene.dirty_contributing["ref"]))
+        source.reload(PayloadPolicy.LOAD_ALL, (identifier for identifier in [ref.identifier]))
         assert read_values(stage) == scene.in_process_values | {"ref": scene.disk_values["ref"]}
-        assert not Sdf.Layer.Find(str(ref)).dirty
+        assert not ref.dirty
 
 
 def test_unchanged_layers_are_not_reloaded(tmp_path: Path) -> None:
