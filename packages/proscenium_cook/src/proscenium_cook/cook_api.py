@@ -12,7 +12,8 @@ from .cook_results import CookResult, DiagnosticCode, NodeDiagnostic, NodeReport
 if TYPE_CHECKING:
     from pxr import Usd
 
-DEFINITIONS = Path(__file__).with_name("node_definitions.usda")
+# The node definitions file, which the front end also builds its node types from.
+NODE_DEFINITIONS_PATH = Path(__file__).with_name("node_definitions.usda")
 
 # Compared as strings, so a code DiagnosticCode lacks fails the import too, rather than raising ValueError.
 if frozenset(tree_cook.diagnostic_codes()) != frozenset(code.value for code in DiagnosticCode):
@@ -22,7 +23,17 @@ if frozenset(tree_cook.diagnostic_codes()) != frozenset(code.value for code in D
 @cache
 def _definitions() -> tree_cook.NodeDefinitions:
     """The shipped node definitions, loaded once a process; loading checks them against the node registry."""
-    return tree_cook.NodeDefinitions(str(DEFINITIONS))
+    return tree_cook.NodeDefinitions(str(NODE_DEFINITIONS_PATH))
+
+
+def link_problem(output_type: str, output_attribute: str, input_type: str, input_attribute: str) -> str | None:
+    """Why the cook rejects a link from one node type's output to another's input, or None when it takes it.
+
+    Attributes are named in full, such as outputs:layer. This is the check the cook gives incompatible-link for, so a
+    front end can mark the link invalid as it's made. Raises ValueError for a type or attribute the definitions don't
+    have.
+    """
+    return _definitions().link_problem(output_type, output_attribute, input_type, input_attribute) or None
 
 
 class TreeCook:

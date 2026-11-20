@@ -4,8 +4,8 @@ The cook: it reads one node tree from a USD stage and evaluates it, node by node
 
 | Path | Holds |
 |---|---|
-| `__init__.py` | The package's public API: `TreeCook`, `CookResult`, `NodeReport`, `NodeDiagnostic`, `Severity`, `DiagnosticCode`, and `usd_version`, the OpenUSD release the compiled module was built against. |
-| `cook_api.py` | `TreeCook`, which holds the tree's stage and cooks it through the compiled module, turning each result into `cook_results`' types. It loads the node definitions once a process, and importing it fails when the compiled module reports other diagnostic codes than `DiagnosticCode`. |
+| `__init__.py` | The package's public API: `TreeCook`, `CookResult`, `NodeReport`, `NodeDiagnostic`, `Severity`, `DiagnosticCode`; `NODE_DEFINITIONS_PATH`, the node definitions file, which a front end builds its node types from; `prim_name_from_node_id`, the tree prim name a node ID maps to; `link_problem`, why the cook rejects a link between two node types' sockets; and `usd_version`, the OpenUSD release the compiled module was built against. |
+| `cook_api.py` | `link_problem`, and `TreeCook`, which holds the tree's stage and cooks it through the compiled module, turning each result into `cook_results`' types. It loads the node definitions once a process, and importing it fails when the compiled module reports other diagnostic codes than `DiagnosticCode`. |
 | `cook_results.py` | What a cook returns: `CookResult`, `NodeReport`, `NodeDiagnostic`, `Severity`, and `DiagnosticCode`, the cook's fixed vocabulary of codes. |
 | `node_definitions.usda` | The node definitions: one `class` prim per node type, with its version and its inputs, outputs, and properties, their types, defaults, menus, and in `customData` their socket kinds. The cook loads it through Sdf, and `tools/node_attributes.py` writes the attribute headers from it. |
 | `tree_cook/` | The cook's C++ source and its built module, `_cook`. |

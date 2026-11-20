@@ -226,13 +226,11 @@ CLASSES = (PROSCENIUM_PT_source_inspector, PROSCENIUM_PT_source_properties, PROS
 
 
 def register() -> None:
-    """Register the scene properties and the widgets' views, and follow the source selection."""
+    """Register the scene properties and the views, and follow the source selection; the widgets are registered."""
     scene_type: Any = bpy.types.Scene
     setattr(scene_type, BINDING_PROPERTY, bpy.props.EnumProperty(items=binding_items, update=_binding_changed))
     setattr(scene_type, SYNCED_PROPERTY, bpy.props.BoolProperty(default=False, update=_synced_changed))
-    display.register()
     display.create_view(VIEW_NAME, shows_in_region, tree_selection_changed)
-    property_display.register()
     property_display.create_view(PROPERTY_VIEW_NAME, shows_in_region, on_jump_to_target=jump_to_target)
     proscenium_sync.BINDINGS.add_selection_listener(source_selection_changed)
 
@@ -243,9 +241,7 @@ def unregister() -> None:
         proscenium_sync.BINDINGS.remove_selection_listener(source_selection_changed)
     widget_updates.unschedule(_show_current_stage)
     property_display.remove_view(PROPERTY_VIEW_NAME)
-    property_display.unregister()
     display.remove_view(VIEW_NAME)
-    display.unregister()
     _Shown.key = None
     for name in (SYNCED_PROPERTY, BINDING_PROPERTY):
         delattr(bpy.types.Scene, name)

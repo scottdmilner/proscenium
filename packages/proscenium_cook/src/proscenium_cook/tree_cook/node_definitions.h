@@ -43,6 +43,10 @@ struct AttributeDefinition {
   PXR_NS::TfToken mutePassThrough;     // for an output: the input a muted node passes through it; empty for none
 };
 
+// Why a link from output to input is invalid, such as a Layer output into a Prim input, or a value that would lose
+// precision; empty when it's valid. A Prim links to a Prims, and an Editable Layer to a Layer input that takes one.
+std::string LinkProblem(const AttributeDefinition& output, const AttributeDefinition& input);
+
 // Which end of a zone a node type is, from its definition's customData zone; kNone for a node that isn't one.
 enum class ZoneEdge : std::uint8_t { kNone, kBegin, kEnd };
 

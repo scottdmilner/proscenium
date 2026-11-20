@@ -7,7 +7,7 @@ license = "MIT"
 requires-python = ">=3.13"
 # Runtime dependencies are distributed with the extension. Keep this to the
 # workspace's packages unless another package is meant to ship.
-dependencies = ["proscenium_sync", "proscenium_ui"]
+dependencies = ["proscenium_cook", "proscenium_sync", "proscenium_ui"]
 
 [dependency-groups]
 # Sync `dev` (the default), which includes the others but `icons`. `lint` alone fails `ty check`: it also checks
@@ -51,8 +51,6 @@ icons = [
     "resvg_py>=0.5.0",
 ]
 dev = [
-    # Not a runtime dependency until a front end uses it (docs/plans/cook-module.md#the-package).
-    "proscenium_cook",
     { include-group = "build" },
     { include-group = "lint" },
     { include-group = "test" },
