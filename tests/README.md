@@ -38,7 +38,7 @@ Extra markers, added per test: `alab` for tests that need ALab (`PROSCENIUM_ALAB
 
 ```
 tests/
-├── AGENTS.md, CLAUDE.md      rules for agents writing tests
+├── AGENTS.md                 rules for agents writing tests
 ├── conftest.py               layer markers, the alab skip, a throwaway Blender user dir
 ├── bpy_free/                 tests that run without Blender
 │   ├── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py

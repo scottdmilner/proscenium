@@ -44,5 +44,5 @@ def test_cook_wheel_ships_its_audited_module(tmp_path: Path) -> None:
     record = json.loads((COOK.out_dir / "build.json").read_text(encoding="utf-8"))
     assert shipped == record["module_sha256"]
     assert "proscenium_cook/node_definitions.usda" in names  # the cook loads its definitions at its first cook
-    sources = (".cpp", ".h", "CMakeLists.txt", "README.md", "AGENTS.md", "CLAUDE.md", ".clang-format", ".gitignore")
+    sources = (".cpp", ".h", "CMakeLists.txt", "README.md", "AGENTS.md", ".clang-format", ".gitignore")
     assert not [n for n in names if n.endswith(sources)]

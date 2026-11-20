@@ -15,7 +15,7 @@ build-backend = "hatchling.build"
 packages = ["src/proscenium_cook"]
 # Each directory's README and agent instructions, for developers, and the cook's sources and dotfiles: only its
 # module ships.
-exclude = ["README.md", "AGENTS.md", "CLAUDE.md", ".*", "*.cpp", "*.h", "CMakeLists.txt"]
+exclude = ["README.md", "AGENTS.md", ".*", "*.cpp", "*.h", "CMakeLists.txt"]
 
 # Builds the cook's module and tags the wheel for this platform (hatch_build.py).
 [tool.hatch.build.targets.wheel.hooks.custom]

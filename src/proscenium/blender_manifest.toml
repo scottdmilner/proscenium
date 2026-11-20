@@ -25,5 +25,4 @@ paths_exclude_pattern = [
   # Each source directory's README and agent instructions, for developers.
   "README.md",
   "AGENTS.md",
-  "CLAUDE.md",
 ]

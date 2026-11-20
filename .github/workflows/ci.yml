@@ -24,7 +24,7 @@ jobs:
         run: |
           code=true
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            # Code is any changed file outside docs/ and the root *.md files (README.md, AGENTS.md, CLAUDE.md).
+            # Code is any changed file outside docs/ and the root *.md files (README.md, AGENTS.md).
             # READMEs in src/, packages/, and tests/ are tested, so they count as code.
             if ! git diff --name-only HEAD^1 HEAD | grep -qvE '^(docs/|[^/]+\.md$)'; then
               code=false

@@ -6,7 +6,7 @@ A package boundary goes only where the interface between two sides stands on its
 
 | Path | Holds |
 |---|---|
-| `AGENTS.md`, `CLAUDE.md` | Rules for agents working here: the import rules to read, the READMEs, and dependencies. `CLAUDE.md` loads `AGENTS.md` for Claude Code. |
+| `AGENTS.md` | Rules for agents working here: the import rules to read, the READMEs, and dependencies. |
 | `proscenium_sync/` | The synchronizer: the bindings, their synchronization and interaction, the API, and the planner, in a wheel for each platform ([its README](proscenium_sync/README.md)). |
 | `proscenium_ui/` | The widgets the extension uses to build the UI: the scene graph and the property viewer ([its README](proscenium_ui/README.md)). |
 | `proscenium_cook/` | The cook, which evaluates a node tree into stages, in a wheel for each platform. The dev group installs it, and the zip leaves it out until a front end uses it ([its README](proscenium_cook/README.md)). |

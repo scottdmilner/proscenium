@@ -10,7 +10,7 @@ Its only Python module is its `__init__.py`, so no import-linter contract protec
 |---|---|
 | `__init__.py` | The unit's exports: every public name of the compiled module. It imports `pxr.Usd` first, which loads Blender's `usd_ms` and the converters the compiled module's arguments need. |
 | `_cook.pyi` | The compiled module's types, so ty checks its callers without a build. |
-| `AGENTS.md`, `CLAUDE.md` | Rules for agents working here. `CLAUDE.md` loads `AGENTS.md` for Claude Code. |
+| `AGENTS.md` | Rules for agents working here. |
 | `.clang-format` | The C++ style, the planner's. |
 | `.gitignore` | Ignores the built module. |
 
