@@ -479,7 +479,7 @@ requirements:
         delivery: M11
         fixtures: [F-BINDING-STATE]
         oracle: "After a binding is removed, methods that need its records raise for its handles, while release can free any retained runtime attachment."
-        note: "API-06's removal half: removing a binding is M11's lifecycle operation."
+        note: "API-06's removal half. The Stage Output bindings plan delivers the removal call (handle.remove, Bindings.remove_binding) ahead of M11; tests/blender/test_binding_removal.py checks this oracle on F-BINDING-STATE \"removed-binding\"."
       - id: API-07
         quote: "reload(layers=None) rereads the binding's source layers from disk on request"
         fixtures: [F-BINDING-STATE]
@@ -748,6 +748,8 @@ requirements:
       - id: OWN-14
         quote: "Remove binding: remove configuration and managed content while preserving detached and unrelated content."
         fixtures: [F-LIFECYCLE-FAILURE, F-UNMANAGED-USER]
+        oracle: "On F-UNMANAGED-USER, removing the binding removes every datablock its manifest names that nothing else uses, its records, and its destination when nothing else is linked into it; the mesh an unmanaged object uses keeps its name and vertices, and the unmanaged objects keep their data, transforms, parenting, collection links, selection, and names. Another binding's content is unchanged. On F-LIFECYCLE-FAILURE, a disposal that fails stays in the pending-cleanup ledger after the configuration is removed, and the removal completes with issues."
+        note: "The Stage Output bindings plan delivers removal ahead of M11, on F-UNMANAGED-USER and with injected disposal failures (tests/blender/test_binding_removal.py); F-LIFECYCLE-FAILURE, fault injection at every commit point, and the decision record on retaining unresolved ownership information stay M11's."
       - id: OWN-15
         quote: "Lifecycle operations must preserve resources still required by other owners"
         fixtures: [F-DETACH-SHARED, F-UNMANAGED-USER]

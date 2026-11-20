@@ -14,23 +14,23 @@ A binding refuses the operations that need its configuration when the configurat
 pending repair (source-access.md#copied-bindings). Either way it keeps everything it has. A handle reaches a
 binding's canonical candidate, and copied() reports the others.
 
-A synchronization that publishes, and a cleanup retry that commits, push one undo step each, and nothing else does,
-a cache call included;
-none in background mode or with global undo off (lifecycle.md#undo-and-runtime-state). An operator calling the API
-doesn't declare UNDO, so it adds no second step.
+A synchronization that publishes, and a cleanup retry or a removal that commits, push one undo step each, and nothing
+else does, a cache call included; none in background mode or with global undo off (lifecycle.md#undo-and-runtime-state).
+An operator calling the API doesn't declare UNDO, so it adds no second step.
 
 Each operation's result reports the binding's cleanup status as it ends
 (proscenium_sync.runtime.pending_cleanup), a refusal's included.
 
 Each kind of call reports a refusal one way:
 
-- An operation (attach, synchronize, cache, set_settings, reload, retry_cleanup) returns a result whose diagnostic
-  says why.
+- An operation (attach, synchronize, cache, set_settings, reload, retry_cleanup, remove_binding) returns a result
+  whose diagnostic says why.
 - The queries requested_settings and possibly_out_of_date raise RefusedRecordError for a configuration that can't be
   read, and DisabledBindingError for a disabled binding (FoundBinding.usable_config).
 - A call needing records raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
-- While synchronize, cache, or retry_cleanup runs, a call to any of them, attach, release, or reload on any binding
-  raises ReentrantCallError before changing anything, which is misuse too; set_settings may be called (CONS-04).
+- While synchronize, cache, retry_cleanup, or remove_binding runs, a call to any of them, attach, release, or reload
+  on any binding raises ReentrantCallError before changing anything, which is misuse too; set_settings may be called
+  (CONS-04).
 - Release clears runtime stages directly and remains valid after undo or removal.
 - A failed write to the pending-cleanup ledger is a defect, and raises (pipeline.md#synchronization-transaction).
 """
@@ -100,7 +100,7 @@ def _not_while_exclusive[**P, R](
     @functools.wraps(operation)
     def checked(bindings: Bindings, *args: P.args, **kwargs: P.kwargs) -> R:
         if bindings.running:
-            raise ReentrantCallError("Called while a synchronization, a cache call, or a cleanup retry is running")
+            raise ReentrantCallError("Called while a synchronization, a cache call, a cleanup retry, or a removal runs")
         return operation(bindings, *args, **kwargs)
 
     return checked
@@ -126,7 +126,7 @@ class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
 
 
 class ReentrantCallError(RuntimeError):  # misuse
-    """A call that can't run during a synchronization, a cache call, or a cleanup retry was made during one."""
+    """A call that can't run during a synchronization, a cache call, a cleanup retry, or a removal was made in one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +180,10 @@ class BindingHandle:
         """Retry the cleanup earlier attempts left pending (Bindings.retry_cleanup)."""
         return BINDINGS.retry_cleanup(self.binding_id)
 
+    def remove(self) -> Result:
+        """Remove the binding with its managed content (Bindings.remove_binding)."""
+        return BINDINGS.remove_binding(self.binding_id)
+
     def possibly_out_of_date(self) -> bool:
         """Whether the display may not show the source as it is now (Bindings.possibly_out_of_date)."""
         return BINDINGS.possibly_out_of_date(self.binding_id)
@@ -231,7 +235,7 @@ class Bindings:
 
     stages: stage_tracking.BindingStageTracker  # never saved; cleared when a file is loaded (registration)
     published_plans: held_plans.HeldPlans  # published generations' plans; never saved, and cleared with the stages
-    running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
+    running: bool  # whether an exclusive operation, synchronize, cache, retry_cleanup, or remove_binding, is running
     published: dict[BindingId, binding_state.GenerationMetadata]  # each binding's last this session (UNDO-05)
     shown_displays: shown_displays.ShownDisplays  # each binding's display, kept for interaction calls; never saved
     # Called with the scene once for each change to its stored source selection, in the order added.
@@ -427,6 +431,26 @@ class Bindings:
         if result.state is not ResultState.FATAL_FAILURE:  # a retry resolving nothing, or unrecorded, is fatal
             _push_undo("Retry USD Display Cleanup")
         return result
+
+    @_exclusive
+    @_reporting_cleanup
+    def remove_binding(self, binding_id: BindingId) -> Result:
+        """Remove the binding's managed content and configuration (proscenium_sync.synchronization.binding_removal).
+
+        What anything else uses is kept. A removal that commits releases the binding's runtime stages and held plans, as
+        release does, and pushes one undo step, which restores the binding; a refusal changes nothing.
+        """
+        found = self._require_binding(binding_id)
+        if not found.usable:
+            return _unusable_binding_result(found)
+        outcome = synchronization.remove_binding(found)
+        if outcome.committed:
+            self.stages.release(binding_id)  # as release does, which raises while this runs
+            self.published_plans.release(binding_id)
+            self.published.pop(binding_id, None)
+            self.shown_displays.forget(binding_id)
+            _push_undo("Remove USD Display")
+        return outcome.result
 
     def possibly_out_of_date(self, binding_id: BindingId) -> bool:
         """Whether the binding's display may not show its source as it is now (lifecycle.md#undo-and-runtime-state).

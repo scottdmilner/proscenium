@@ -48,6 +48,7 @@ class OriginatingOperation(StrEnum):
 
     SYNCHRONIZE = "synchronize"
     CACHE = "cache"
+    REMOVE = "remove"  # removing the binding
 
 
 def new_ledger_key() -> str:

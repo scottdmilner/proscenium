@@ -64,7 +64,7 @@ def set_ledger_entries(changed: Mapping[str, cleanup_ledgers.LedgerEntry], remov
     An empty update writes nothing. Raises as check_trackable does, and ValueError or TypeError, changing nothing, over
     an update that makes no ledger.
     """
-    text, stored = _trackable_ledger()
+    text, stored = trackable_ledger()
     if not changed and not removed:
         return
     after = (cleanup_ledgers.Ledger({}) if stored is None else stored.record).updated(changed, removed)
@@ -77,11 +77,11 @@ def check_trackable() -> None:
     RefusedRecordError over one that can't be read, and ValueError if the file has no binding index to hold it or more
     than one.
     """
-    _trackable_ledger()
+    trackable_ledger()
 
 
-def _trackable_ledger() -> tuple[bpy.types.Text, LoadedRecord[cleanup_ledgers.Ledger] | None]:
-    """The index Text and its readable ledger, or none yet; raises as check_trackable does."""
+def trackable_ledger() -> tuple[bpy.types.Text, LoadedRecord[cleanup_ledgers.Ledger] | None]:
+    """The index Text and its readable ledger, or None if it has none yet; raises as check_trackable does."""
     text = _index_text()
     if text is None:
         raise ValueError("This file has no binding index to hold the pending-cleanup ledger")

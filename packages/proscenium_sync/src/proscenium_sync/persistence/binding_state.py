@@ -154,3 +154,8 @@ def write_last_attempt(destination: bpy.types.Collection, attempt: LastSynchroni
     Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read.
     """
     id_property_records.write(destination, ATTEMPT_KEY, ATTEMPT, attempt)
+
+
+def remove_last_attempt(destination: bpy.types.Collection) -> None:
+    """Remove the binding's last attempt from its destination, if it has one; raises as write_last_attempt does."""
+    id_property_records.remove(destination, ATTEMPT_KEY, ATTEMPT)

@@ -105,6 +105,11 @@ def write_config(destination: bpy.types.Collection, binding_id: BindingId, confi
     id_property_records.write(destination, config_key(binding_id), CONFIG, config)
 
 
+def remove_config(destination: bpy.types.Collection, binding_id: BindingId) -> None:
+    """Remove a binding's configuration from its destination, if it's there; raises as write_config does."""
+    id_property_records.remove(destination, config_key(binding_id), CONFIG)
+
+
 def binding_ids(collection: bpy.types.Collection) -> list[BindingId]:
     """The identifiers of the bindings whose configuration is on collection; normally one, or none."""
     return [
