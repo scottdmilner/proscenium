@@ -116,7 +116,9 @@ def test_a_binding_with_copies_has_no_remove_button(bindings: Bindings) -> None:
     # A copy of the destination, with the index's entry keeping the original canonical: the binding still synchronizes,
     # but removal refuses it while the copy's records remain, so the panel says so and offers no remove button.
     handle = bindings.create_binding(_scene(), name="Shot")
+    assert [status.has_copies for status in bindings.binding_statuses(_scene())] == [False]
     _scene().collection.children.link(bpy.data.collections["Shot"].copy())
+    assert [status.has_copies for status in bindings.binding_statuses(_scene())] == [True]
     layout = _drawn()
     [button] = _synchronize_buttons(layout)
     assert button.properties == {"binding_id": handle.binding_id}

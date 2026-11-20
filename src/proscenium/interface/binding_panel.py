@@ -7,9 +7,9 @@ bindings with one call (Bindings.binding_statuses): each one's name, whether a s
 published and may be out of date, how its last attempt ended, or why it can't be used. The synchronize button
 synchronizes at the scene's current frame. The remove button removes the binding (Bindings.remove_binding), its
 managed content and its configuration, so one left behind needn't be deleted by hand. A binding that can't be used has
-neither button, since both would refuse it; the row says why. A binding with copies (Bindings.copied) has no remove
-button either, since removal refuses it while its copies' records remain; the row says so. Neither operator declares
-UNDO, since the API pushes the synchronization's and the removal's undo steps.
+neither button, since both would refuse it; the row says why. A binding with copies (BindingStatus.has_copies) has no
+remove button either, since removal refuses it while its copies' records remain; the row says so. Neither operator
+declares UNDO, since the API pushes the synchronization's and the removal's undo steps.
 """
 
 from __future__ import annotations
@@ -43,7 +43,6 @@ def draw_bindings(layout: Any, scene: bpy.types.Scene) -> None:
     if not statuses:
         layout.label(text="No bindings")
         return
-    with_copies = {copied.binding_id for copied in proscenium_sync.BINDINGS.copied()}
     for status in statuses:
         box = layout.box()
         row = box.row()
@@ -54,7 +53,7 @@ def draw_bindings(layout: Any, scene: bpy.types.Scene) -> None:
         synchronize = row.operator(PROSCENIUM_OT_synchronize.bl_idname, text="", icon="FILE_REFRESH")
         synchronize.binding_id = status.binding_id
         box.label(text=state_text(status))
-        if status.binding_id in with_copies:  # removal would refuse it
+        if status.has_copies:  # removal would refuse it
             box.label(text="Has copies, so it can't be removed", icon="INFO")
             continue
         remove = row.operator(PROSCENIUM_OT_remove_binding.bl_idname, text="", icon="X")
