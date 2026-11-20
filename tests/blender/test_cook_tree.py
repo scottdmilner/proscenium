@@ -160,6 +160,21 @@ def test_no_chosen_viewer_cooks_none(extension: ModuleType) -> None:
     assert "Stage Output" in result.stage_outputs
 
 
+def test_a_trees_only_viewer_is_chosen_when_made(extension: ModuleType) -> None:
+    del extension
+    tree = _tree()
+    _node(tree, "StageOutput", "Stage Output")
+    first = tree.nodes.new("ProsceniumCookViewer")
+    assert tree.viewer == first.name  # the only Viewer, chosen as it's made
+    tree.nodes.new("ProsceniumCookViewer")
+    assert tree.viewer == first.name  # a second Viewer chooses nothing
+    tree.viewer = ""
+    tree.nodes.remove(first)
+    tree.nodes.remove(tree.nodes["Viewer.001"])
+    third = tree.nodes.new("ProsceniumCookViewer")
+    assert tree.viewer == third.name  # the only one again
+
+
 def test_viewer_dropdown_offers_only_viewers(extension: ModuleType) -> None:
     del extension
     tree, _nodes = _zone_tree()

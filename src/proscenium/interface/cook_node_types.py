@@ -113,7 +113,7 @@ class CookNode:
         return ntree.bl_idname == TREE_IDNAME
 
     def init(self, context: Any) -> None:
-        """Add a socket per input and output, in the definition's order."""
+        """Add a socket per input and output, in the definition's order; the tree's only Viewer becomes its Viewer."""
         del context
         node: Any = self
         for attribute in self.cook_definition.attributes:
@@ -127,6 +127,8 @@ class CookNode:
                 _set_socket_default(socket, attribute)
             elif attribute.namespace == "outputs":
                 node.outputs.new(socket_idname(attribute), attribute.label, identifier=attribute.base_name)
+        if self.cook_definition.type_name == "Viewer" and viewer_names(node.id_data) == [node.name]:
+            setattr(node.id_data, VIEWER_PROPERTY, node.name)  # a tree with one Viewer cooks it without a choice
 
     def draw_buttons(self, context: Any, layout: Any) -> None:
         """Draw the node's properties, and a begin's end."""
