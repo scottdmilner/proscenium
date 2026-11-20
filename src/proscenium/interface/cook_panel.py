@@ -6,8 +6,9 @@ the tree's TreeCook holds, so the cook's state, and the stages it returns, last 
 active Viewer is the one the tree's Viewer dropdown names. The tree's diagnostics, each node's report, and which
 nodes have a stage are printed to the console, and the Viewer's stage shows in the cook inspector's panels below,
 which the kept cook holds it for. The Cook operator then hands each Stage Output's stage to its binding and synchronizes
-it (cook_bindings), printing each one's binding and result; it declares no UNDO, since each synchronization that
-publishes pushes its own undo step. The panel names each Stage Output that has no scene, so no binding.
+it (cook_bindings), then removes the bindings the tree made that no Stage Output names any more, printing each
+binding and its result; it declares no UNDO, since each synchronization that publishes, and each removal, pushes its own
+undo step. The panel names each Stage Output that has no scene, so no binding.
 """
 
 from __future__ import annotations
@@ -81,6 +82,7 @@ def cook_report(
     tree: bpy.types.NodeTree,
     result: proscenium_cook.CookResult,
     synchronizations: list[cook_bindings.StageOutputSync],
+    removals: list[cook_bindings.BindingRemoval],
     *,
     with_tree_layer: bool,
 ) -> str:
@@ -108,6 +110,8 @@ def cook_report(
         lines.append("  (none)")
     lines.append("--- Bindings ---")
     lines += cook_bindings.sync_report_lines(synchronizations)
+    lines.append("--- Removed bindings ---")
+    lines += cook_bindings.removal_report_lines(removals)
     return "\n".join(lines)
 
 
@@ -121,11 +125,11 @@ def diagnostic_counts(result: proscenium_cook.CookResult) -> tuple[int, int]:
 
 
 class PROSCENIUM_OT_cook_tree(bpy.types.Operator):  # noqa: N801 - Blender's operator naming
-    """Cook the edited tree, synchronize its Stage Outputs' bindings, and print what each gave to the console."""
+    """Cook the edited tree, synchronize its Stage Outputs' bindings, remove those none names, and print it all."""
 
     bl_idname = "proscenium.cook_tree"
     bl_label = "Cook"
-    bl_options = {"REGISTER"}  # noqa: RUF012 - Blender's operator field; no UNDO, as synchronizing pushes the steps
+    bl_options = {"REGISTER"}  # noqa: RUF012 - Blender's field; no UNDO: the bindings push their own steps
 
     @classmethod
     @override
@@ -135,20 +139,22 @@ class PROSCENIUM_OT_cook_tree(bpy.types.Operator):  # noqa: N801 - Blender's ope
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:
-        """Cook, synchronize, print, and report the diagnostic counts and the failed synchronizations."""
+        """Cook, synchronize, remove, print, and report the diagnostic counts and the failed bindings."""
         tree = _edited_tree(context)
         assert tree is not None  # poll
         result = cook_tree(tree)
         synchronizations = cook_bindings.synchronize_stage_outputs(tree, result)
+        removals = cook_bindings.remove_unnamed_bindings(tree)
         with_tree_layer = getattr(tree, cook_node_types.PRINT_TREE_LAYER_PROPERTY)
-        print(cook_report(tree, result, synchronizations, with_tree_layer=with_tree_layer))
+        print(cook_report(tree, result, synchronizations, removals, with_tree_layer=with_tree_layer))
         errors, warnings = diagnostic_counts(result)
         stages = len(result.stage_outputs) + (result.viewer_stage is not None)
         failed = sum(sync.failed for sync in synchronizations)
+        failed_removals = sum(removal.failed for removal in removals)
         self.report(
             {"INFO"},
-            f"Cooked {stages} stage(s): {errors} error(s), {warnings} warning(s), {failed} failed synchronization(s);"
-            " see the console",
+            f"Cooked {stages} stage(s): {errors} error(s), {warnings} warning(s), {failed} failed synchronization(s),"
+            f" {failed_removals} failed removal(s); see the console",
         )
         return {"FINISHED"}
 

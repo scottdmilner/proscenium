@@ -9,6 +9,9 @@ node's name. Behavior stays in the cook; these types only hold what the tree lay
 A Stage Output also holds front-end state that the tree layer doesn't write, so the cook never sees it: `scene`, the
 scene its binding displays in, which a new node takes from the context; and `binding_id`, hidden, its binding's
 identifier. A copied Stage Output's identifier is cleared, so the copy makes a binding of its own on its next cook.
+The tree records the bindings its Stage Outputs made, in `made_bindings`, hidden, an item per identifier, so a cook can
+remove those that no Stage Output names any more (cook_bindings). A copied tree's record leaves out the bindings its
+Stage Outputs' originals name, so the copy removes none of them.
 
 A link the cook would reject (proscenium_cook.link_problem), such as a Layer into a Prim input, is drawn red, as
 Blender draws an invalid link in its own editors, and kept: the tree layer still writes it, and the cook reports it as
@@ -38,6 +41,7 @@ VIEWER_PROPERTY = "viewer"
 STAGE_OUTPUT_TYPE = "StageOutput"
 SCENE_PROPERTY = "scene"
 BINDING_ID_PROPERTY = "binding_id"
+MADE_BINDINGS_PROPERTY = "made_bindings"
 
 # Socket colors by socket kind, and for the value sockets Blender draws itself.
 _KIND_COLORS = {
@@ -143,10 +147,21 @@ class CookNode:
             setattr(node, SCENE_PROPERTY, (context if context is not None else bpy.context).scene)
 
     def copy(self, node: Any) -> None:
-        """A copied Stage Output names no binding, so it makes its own on its next cook."""
-        del node  # the original
-        if self.cook_definition.type_name == STAGE_OUTPUT_TYPE:
-            setattr(self, BINDING_ID_PROPERTY, "")
+        """A copied Stage Output names no binding, so it makes its own on its next cook.
+
+        In a copied tree, whose record Blender copies whole, the original's binding also leaves the copy's record, so
+        the copy never removes it. The original isn't among the copy's nodes then, as it is for a duplicate in one tree.
+        """
+        if self.cook_definition.type_name != STAGE_OUTPUT_TYPE:
+            return
+        copied: Any = self
+        tree = copied.id_data  # None for a copy onto the clipboard
+        binding_id = getattr(node, BINDING_ID_PROPERTY)
+        if tree is not None and binding_id and node.as_pointer() not in {n.as_pointer() for n in tree.nodes}:
+            record = getattr(tree, MADE_BINDINGS_PROPERTY)
+            if (index := record.find(binding_id)) >= 0:
+                record.remove(index)
+        setattr(self, BINDING_ID_PROPERTY, "")
 
     def draw_buttons(self, context: Any, layout: Any) -> None:
         """Draw the node's properties, a begin's end, and a Stage Output's scene, or why it has no binding."""
@@ -179,6 +194,10 @@ def _search_viewers(tree: Any, context: Any, edit_text: str) -> list[str]:
     return sorted(viewer_names(tree))
 
 
+class PROSCENIUM_PG_made_binding(bpy.types.PropertyGroup):  # noqa: N801 - Blender's class naming
+    """A binding one of the tree's Stage Outputs made, by its identifier, which the item's name holds."""
+
+
 class PROSCENIUM_NT_cook_tree(bpy.types.NodeTree):  # noqa: N801 - Blender's class naming
     """A node tree the cook evaluates into USD stages."""
 
@@ -193,6 +212,10 @@ class PROSCENIUM_NT_cook_tree(bpy.types.NodeTree):  # noqa: N801 - Blender's cla
     # The Viewer the cook runs, by its node's name, which a rename doesn't follow, as a begin's end doesn't.
     viewer: bpy.props.StringProperty(  # ty: ignore[invalid-type-form]
         name="Viewer", description="The Viewer node the cook runs and prints", search=_search_viewers
+    )
+    # The bindings the tree's Stage Outputs made, which a cook removes once no Stage Output names them.
+    made_bindings: bpy.props.CollectionProperty(  # ty: ignore[invalid-type-form]
+        type=PROSCENIUM_PG_made_binding, name="Made Bindings", options={"HIDDEN"}
     )
 
     @override
@@ -402,6 +425,7 @@ def read_definitions(path: str) -> tuple[CookNodeDefinition, ...]:
 
 def register() -> None:
     """Register the tree type, its sockets, a node type per definition, and the add menu's entries."""
+    bpy.utils.register_class(PROSCENIUM_PG_made_binding)
     bpy.utils.register_class(PROSCENIUM_NT_cook_tree)
     for socket_type in (*_KIND_SOCKETS, PROSCENIUM_S_unsupported):
         bpy.utils.register_class(socket_type)
@@ -426,6 +450,7 @@ def unregister() -> None:
     for socket_type in reversed((*_KIND_SOCKETS, PROSCENIUM_S_unsupported)):
         bpy.utils.unregister_class(socket_type)
     bpy.utils.unregister_class(PROSCENIUM_NT_cook_tree)
+    bpy.utils.unregister_class(PROSCENIUM_PG_made_binding)
 
 
 def _read_attribute(attribute: Sdf.AttributeSpec) -> CookAttribute:

@@ -12,10 +12,9 @@ is canonical: the copies' records would make the binding a candidate again, and 
    what retirement removes, so a view layer's base isn't taken for a use, and each one released is linked again.
 2. Each removal that fails, or whose user's did, stays in the ledger, retryable, with a cleanup diagnostic among the
    result's, so the removal completes with issues: a resource the manifest named enters it with a removal-failed
-   diagnostic, and a leftover gets a fresh diagnostic under its own code, as a retry gives it. An object stays
-   unlinked, so it's inactive. The ledger is
-   on the binding index's Text, which outlives the configuration, so no disposal work is orphaned
-   (lifecycle.md#lifecycle-failure-safety). A ledger write that fails raises, as a defect.
+   diagnostic, and a leftover gets a fresh diagnostic under its own code, as a retry gives it. An object stays unlinked,
+   so it's inactive. The ledger is on the binding index's Text, which outlives the configuration, so no disposal work is
+   orphaned (lifecycle.md#lifecycle-failure-safety). A ledger write that fails raises, as a defect.
 3. The binding index's entry is removed (source-access.md#canonical-candidate), so no entry names a destination
    that stays without the binding's records.
 4. The destination is removed, which takes the binding's records with it, when it then holds nothing and nothing but
@@ -58,7 +57,7 @@ def remove_binding(found: FoundBinding) -> RemovalOutcome:
     """Remove a binding the caller has found usable: its managed content, then its records."""
     binding_id, destination = found.binding_id, found.destination
     assert destination is not None  # a usable binding's
-    if isinstance(checked := _checked_records(binding_id, destination), Diagnostic):
+    if isinstance(checked := _checked_records(found, destination), Diagnostic):
         return RemovalOutcome(Result(checked), committed=False)
     manifest, ledger, text = checked
     managed = {("manifest", key): e.datablock for key, e in manifest.entries.items()}
@@ -87,14 +86,15 @@ def remove_binding(found: FoundBinding) -> RemovalOutcome:
 
 
 def _checked_records(
-    binding_id: BindingId, destination: bpy.types.Collection
+    found: FoundBinding, destination: bpy.types.Collection
 ) -> tuple[manifests.Manifest, cleanup_ledgers.Ledger, bpy.types.Text] | Diagnostic:
     """The manifest, the ledger, and its Text; or why removal refuses: a record it changes can't be read, or copies.
 
     An empty manifest for a binding with none yet, and an empty ledger for a file with none yet.
     """
-    if (copies := _copies(binding_id)) is not None:
-        return copies
+    binding_id = found.binding_id
+    if found.has_copies:  # the lookup that found it counted the candidates
+        return _copies(binding_id)
     try:
         text, stored = pending_cleanup.trackable_ledger()
     except ValueError as error:  # no binding index, or two: neither ledger authorizes disposal
@@ -112,11 +112,10 @@ def _checked_records(
     return manifests.Manifest({}) if manifest is None else manifest.record, ledger, text
 
 
-def _copies(binding_id: BindingId) -> Diagnostic | None:
-    """The refusal of a binding with copies, naming its candidates, or None for a binding with none."""
+def _copies(binding_id: BindingId) -> Diagnostic:
+    """The refusal of a binding with copies, naming its candidates."""
     identity = copy_detection.candidates_for_binding(binding_id)
-    if identity is None or len(identity.candidates) == 1:
-        return None
+    assert identity is not None  # it has copies
     report = copy_detection.copied_binding_report(binding_id, identity)
     named = ", ".join(
         f"{c.scene_name or 'no scene'}/{c.destination_name}{' (canonical)' if c.is_canonical else ''}"
