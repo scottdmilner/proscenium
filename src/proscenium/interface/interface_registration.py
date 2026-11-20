@@ -1,4 +1,4 @@
-"""Registration of the temporary UI: its scene properties, classes, tool, subscriptions, and the cook's node tree.
+"""Registration of the temporary UI: its scene properties, classes, tool, subscriptions, node tree, and menu entries.
 
 proscenium.addon registers it after the synchronizer. It registers proscenium_ui's widgets once, and each inspector,
 the source inspector and the cook inspector, adds and removes its own views, independently of the other. After a file
@@ -17,7 +17,15 @@ from bpy.app.handlers import persistent
 from proscenium_ui.property_viewer_widget import display as property_display
 from proscenium_ui.scene_graph_widget import display as scene_graph_display
 
-from . import binding_panel, cook_inspector, cook_node_types, cook_panel, source_inspector, source_select_tool
+from . import (
+    binding_panel,
+    cook_inspector,
+    cook_node_types,
+    cook_panel,
+    source_inspector,
+    source_select_tool,
+    workspace_access,
+)
 
 CLASSES = (
     *binding_panel.CLASSES,
@@ -25,6 +33,7 @@ CLASSES = (
     *source_inspector.CLASSES,
     *cook_panel.CLASSES,
     *cook_inspector.CLASSES,  # below the Cook panel
+    *workspace_access.CLASSES,
 )
 
 
@@ -58,6 +67,7 @@ def register() -> None:
     property_display.register()
     source_inspector.register()
     cook_inspector.register()
+    workspace_access.register()
     bpy.app.handlers.load_post.append(_file_loaded)
     bpy.app.handlers.undo_post.append(_undone_or_redone)
     bpy.app.handlers.redo_post.append(_undone_or_redone)
@@ -68,6 +78,7 @@ def register() -> None:
 def unregister() -> None:
     """Remove what register() added."""
     source_select_tool.unsubscribe_from_tools()
+    workspace_access.unregister()
     bpy.app.handlers.load_post.remove(_file_loaded)
     bpy.app.handlers.undo_post.remove(_undone_or_redone)
     bpy.app.handlers.redo_post.remove(_undone_or_redone)

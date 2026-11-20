@@ -3,8 +3,8 @@
 It uses only the packages' public APIs, so it can be replaced without touching the rest. It exports its modules: the
 Source Select tool and its sidebar panel (source_select_tool), the binding panel (binding_panel), the source inspector
 (source_inspector), the cook's node tree (cook_node_types), the tree's layer (cook_tree_layer), the cook panel
-(cook_panel), the Viewer's stage in the widgets (cook_inspector), and its registration (interface_registration),
-which proscenium.addon calls.
+(cook_panel), the Viewer's stage in the widgets (cook_inspector), the Proscenium workspace's operator, button, and
+menu entry (workspace_access), and its registration (interface_registration), which proscenium.addon calls.
 """
 
 from . import (
@@ -16,6 +16,7 @@ from . import (
     interface_registration,
     source_inspector,
     source_select_tool,
+    workspace_access,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "interface_registration",
     "source_inspector",
     "source_select_tool",
+    "workspace_access",
 ]
