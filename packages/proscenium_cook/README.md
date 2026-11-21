@@ -5,5 +5,5 @@ The `proscenium_cook` package: the cook, which evaluates a node tree, given as a
 | Path | Holds |
 |---|---|
 | `pyproject.toml` | The package's project. It depends on nothing that ships: `pxr` comes with Blender. Its wheel leaves out the cook's C++ sources. Its `[tool.importlinter]` contracts are the package's import rules ([import rules](../README.md#import-rules)). |
-| `hatch_build.py` | The wheel's build hook: it builds the cook's module unless it's current (`tools/native_build.py`'s `sync_module`), adds it to the wheel, and tags the wheel for this platform. An editable install skips it, and imports the module from `tree_cook/`. |
+| `hatch_build.py` | The package's build hook: it builds the cook's module into `tree_cook/` unless it's current (`tools/build/native_build.py`'s `sync_module`). For an editable install, as `uv sync` makes, that's all, and the install imports the module from there; `pyproject.toml`'s `cache-keys` make `uv sync` rerun it when the cook's sources change. For a wheel, it adds the module and tags the wheel for this platform. |
 | `src/` | The package's source, `proscenium_cook/` ([its README](src/proscenium_cook/README.md)). |

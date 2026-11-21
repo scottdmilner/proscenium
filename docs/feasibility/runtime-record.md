@@ -296,11 +296,11 @@ from the dev group. It configures a Release build for the uv environment's
 interpreter, installs into a temporary folder, moves the module into
 `build/hydra-bridge/` for the probes, and audits it. No wheel is built: the module
 is meant to ship inside the extension package, and the main extension still builds
-only through `tools/build_extension.py`.
+only through `tools/build/build_extension.py`.
 
 **Dependencies.** The target release is the bpy version in `uv.lock` (5.2.2;
-`tools/blender_release.py`). The same helper picks the Blender binary CI downloads.
-`tools/blender_deps.py` (the bridge's `prepare_deps.py` until M3 moved it, unchanged in
+`tools/build/blender_release.py`). The same helper picks the Blender binary CI downloads.
+`tools/build/blender_deps.py` (the bridge's `prepare_deps.py` until M3 moved it, unchanged in
 logic) reads that release's git tag (`v5.2.2`) from a shallow, treeless
 clone of `blender.git` and takes the precompiled-library revisions from its `lib/`
 submodule pointers. The resolved tag, commit, and revisions are cached in
@@ -1954,7 +1954,7 @@ uv run python tools/feasibility/hydra_bridge/extension_install_probe.py package 
 uv run python tools/feasibility/hydra_bridge/extension_install_probe.py install
 ```
 
-- **The zip.** `extension_install_probe.py package` copies `src/proscenium`, adds the module and its `build.json` to `core/`, and sets the manifest's `platforms` to this platform alone. The extension CLI from the bpy wheel then validates the copy, builds it with `--split-platforms` (which names the zip for the platform), and validates the zip. This is a test zip: `tools/build_extension.py`, the product build, doesn't take the bridge. Its six files are the extension's four, the module and `build.json`; it bundles no USD.
+- **The zip.** `extension_install_probe.py package` copies `src/proscenium`, adds the module and its `build.json` to `core/`, and sets the manifest's `platforms` to this platform alone. The extension CLI from the bpy wheel then validates the copy, builds it with `--split-platforms` (which names the zip for the platform), and validates the zip. This is a test zip: `tools/build/build_extension.py`, the product build, doesn't take the bridge. Its six files are the extension's four, the module and `build.json`; it bundles no USD.
 - **Three sessions of the Blender binary**, sharing one empty user directory (`BLENDER_USER_RESOURCES`), without `--factory-startup` so preferences carry over:
   1. **Install.** A copy of the zip naming another platform is refused ("This platform (macos-arm64) isn't one of (windows-x64)"; the operator still reports `FINISHED`, so the check is that nothing was installed). The real zip installs into `user_default`, Install from Disk's repository, and is enabled; enabling doesn't load the compiled module. Preferences are saved. 7 checks.
   2. **A new session.** The extension is enabled from the saved preferences and loaded at startup. `bl_ext.user_default.proscenium.core._hydra_bridge` loads from the installed package, and the loading checks (42) and prototype checks (20) pass against it. Disabling turns the extension off and leaves the compiled module imported, as Python never unloads one; re-enabling imports the same module object, which still captures. 8 checks.

@@ -1,7 +1,8 @@
-"""The wheel's build hook: ships the planner, built for this platform, in a wheel tagged for it."""
+"""The package's build hook: builds the planner for this platform, for a wheel or an editable install."""
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any, override
@@ -13,16 +14,23 @@ HERE = Path(__file__).resolve().parent
 
 
 class PlannerBuildHook(BuildHookInterface[BuilderConfig]):
-    """Builds the planner into planner/ unless it's current (tools/native_build.py), and adds it to the wheel."""
+    """Builds the planner into planner/ unless it's current (tools/build/native_build.py), and adds it to a wheel."""
 
     @override
     def initialize(self, version: str, build_data: dict[str, Any]) -> None:
-        if self.target_name != "wheel" or version == "editable":
-            return  # an editable install imports the module from planner/, where tools/build_extension.py builds it
-        # The build runs without isolation, in the uv environment, with the dev group's CMake, Ninja, and bpy wheel.
-        sys.path.insert(0, str(HERE.parents[1] / "tools"))
-        from native_build import PLANNER, sync_module, wheel_tag
+        if self.target_name != "wheel":
+            return
+        # Both uv sync (no-build-isolation-package) and tools/build/build_extension.py build without isolation, in the
+        # uv environment, with the dev group's CMake, Ninja, filelock, and bpy wheel.
+        sys.path.insert(0, str(HERE.parents[1] / "tools" / "build"))
+        from native_build import PLANNER, SKIP_NATIVE_BUILD, sync_module, wheel_tag
 
+        if version == "editable":
+            # The editable install imports the module from planner/, where sync_module builds it. CI skips it there,
+            # and builds the module with tools/build/build_extension.py.
+            if os.environ.get(SKIP_NATIVE_BUILD) != "1":
+                sync_module(PLANNER)
+            return
         module = sync_module(PLANNER)
         build_data["pure_python"] = False
         build_data["tag"] = wheel_tag()

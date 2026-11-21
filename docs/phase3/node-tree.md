@@ -5,7 +5,7 @@ The primitives of Phase 3's stage editor: a node tree whose nodes read USD layer
 The tree's pass is a *cook*, as in Houdini: the tree cooks its layers, and a zone recooks when a change reaches it. "Evaluation" is the planner's, reading a source through Hydra, and the glossary's *evaluation stage*; "build" is what a synchronization does to the display.
 
 Evidence is marked as in the other notes:
-- **Checked:** run headless in the bpy 5.2.2 LTS wheel (USD 0.26.3) on one macOS machine, an Apple M1 Max, each in one case unless stated, by throwaway probes that aren't in the repository. Some probes called a C++ module built against Blender's USD headers and linked to its `usd_ms` through `tools/native_build.py`. ALab is the production-scale fixture ([docs/testing/alab/](../testing/alab/)), at `entry.usda`.
+- **Checked:** run headless in the bpy 5.2.2 LTS wheel (USD 0.26.3) on one macOS machine, an Apple M1 Max, each in one case unless stated, by throwaway probes that aren't in the repository. Some probes called a C++ module built against Blender's USD headers and linked to its `usd_ms` through `tools/build/native_build.py`. ALab is the production-scale fixture ([docs/testing/alab/](../testing/alab/)), at `entry.usda`.
 - **Not checked:** reasoned from USD's or Blender's documentation, but not run here.
 
 Everything not marked is design: what the editor should do, for the user to settle.
@@ -647,7 +647,7 @@ The cook is C++, in a compiled module of its own, apart from the planner. It aut
 PROJECT.md prefers Python, and adopts a compiled component when measurements show Python can't meet the budgets, or when it reuses OpenUSD functionality that Blender's Python `pxr` doesn't expose. The cook does the second: Python's composition errors expose only `errorType` and `rootSite`, while mapping an error to the node that authored it needs the C++ types' source layer, site with its variant path, asset path, and arc type ([Provenance](#provenance)). The measurements support it ([Measurements](#measurements)):
 - **Where the cook's own code is the work, C++ was much faster:** 2.2 to 4.6 times on authoring loops, and 30 times on converting arrays into `VtArray`s. Whole recooks were 1.5 to 2.9 times faster on tweaks and 1.1 to 1.7 times on structural recooks, since recomposing, transfers, Blender's evaluation, and writing are the same in either language.
 - **What comes later grows that share:** for-each zones and trees of many zones multiply the authoring calls, and bringing animated Blender data in converts arrays on every frame (about 96 ms per frame for 10 million positions through `FromNumpy`, against about 6 ms in C++).
-- **The planner's toolchain already exists:** `tools/native_build.py`, the linkage audit, clang-format, and clang-tidy. A second compiled module reuses it, though the distribution build needs extending to it ([Where It Lives](#where-it-lives)).
+- **The planner's toolchain already exists:** `tools/build/native_build.py`, the linkage audit, clang-format, and clang-tidy. A second compiled module reuses it, though the distribution build needs extending to it ([Where It Lives](#where-it-lives)).
 - **Splitting the work,** a Python cook with native helpers for hot loops, would put node behavior in two languages, and porting later would rewrite every node.
 - **The cost is slower iteration** while the design moves; this note's node sections are the reference that limits it.
 
@@ -661,7 +661,7 @@ In either language, the cook authors through the Sdf API, which was faster than 
 - **The cook's reports are per node,** not a binding's diagnostics, so they get their own type rather than `proscenium_sync.results`'.
 
 What it costs:
-- `tools/build_extension.py` builds each workspace package's wheel, and `proscenium_sync`'s build hook builds only the planner. The cook's wheel would have a build hook of its own, building a second CMake project through `tools/native_build.py`, so the linkage audit covers both.
+- `tools/build/build_extension.py` builds each workspace package's wheel, and `proscenium_sync`'s build hook builds only the planner. The cook's wheel would have a build hook of its own, building a second CMake project through `tools/build/native_build.py`, so the linkage audit covers both.
 - The planner's [boundary rules](../../packages/proscenium_sync/src/proscenium_sync/planner/AGENTS.md#boundary-rules) apply to the new module: Tf errors and C++ exceptions become Python exceptions, buffers are read-only and typed as Blender's, the GIL is released while waiting, and OpenUSD workarounds are labeled. The planner's small error translation is duplicated at first rather than split into a shared library.
 - The new package gets its contracts in its own `pyproject.toml`'s `[tool.importlinter]`, with their `lint-imports` hook, and its place in the root's contracts between packages ([import rules](../../packages/README.md#import-rules)), its directory READMEs, an `AGENTS.md` beside its C++ like the planner's, and a line in the root AGENTS.md's repository map.
 

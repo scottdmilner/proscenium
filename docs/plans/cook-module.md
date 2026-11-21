@@ -99,7 +99,7 @@ What a zone holds is decided by its chain, not by where it's drawn ([What a Zone
 | Path | Holds |
 |---|---|
 | `packages/proscenium_cook/pyproject.toml` | The project, its `[tool.importlinter]` contracts, and its wheel's build hook |
-| `packages/proscenium_cook/hatch_build.py` | Builds `_cook` through `tools/native_build.py` and ships it in a wheel tagged for the platform, as `proscenium_sync`'s hook does for the planner |
+| `packages/proscenium_cook/hatch_build.py` | Builds `_cook` through `tools/build/native_build.py` and ships it in a wheel tagged for the platform, as `proscenium_sync`'s hook does for the planner |
 | `src/proscenium_cook/__init__.py` | Exports the API: `TreeCook`, `CookResult`, `NodeReport`, `NodeDiagnostic`, and the severities and codes |
 | `src/proscenium_cook/node_definitions.usda` | One `class` prim per node type ([Node Definitions](../phase3/node-tree.md#the-tree-as-plain-data)) |
 | `src/proscenium_cook/tree_cook/` | The C++ module `_cook`, its CMake project, its type stubs, and an `AGENTS.md` like [the planner's](../../packages/proscenium_sync/src/proscenium_sync/planner/AGENTS.md) |
@@ -153,8 +153,8 @@ Behavior stays in C++, never in the definitions file, so it lives in one place.
 
 Report data crosses to Python as a `VtDictionary`, so one binding carries every node type's data. A type whose data grows past a dictionary can get a binding of its own later.
 - **It imports neither other package,** and neither imports it. The root contracts get its place: `proscenium_cook` beside `proscenium_sync | proscenium_ui`, and a protected contract so other packages use only its `__init__.py`'s names.
-- **It's a runtime dependency,** for the temporary UI's cook tree (`src/proscenium/interface/`), a minimal front end for trying the cook in Blender: it builds a node type per definition, writes the tree as its layer, cooks it, prints the diagnostics and stages, and hands each Stage Output's stage to a binding of its own ([stage-output-bindings.md](stage-output-bindings.md)). The cook is in the root `[project] dependencies`, `tools/build_extension.py` builds its wheel with the others, and its compiled component has its DECISIONS.md row. `tests/bpy_free/test_build_extension.py` checks that the cook's wheel builds and passes the linkage audit.
-- **`tools/native_build.py`** gains `COOK`, a `NativeModule` built to `build/cook/`, so the linkage audit and the pinned headers cover it.
+- **It's a runtime dependency,** for the temporary UI's cook tree (`src/proscenium/interface/`), a minimal front end for trying the cook in Blender: it builds a node type per definition, writes the tree as its layer, cooks it, prints the diagnostics and stages, and hands each Stage Output's stage to a binding of its own ([stage-output-bindings.md](stage-output-bindings.md)). The cook is in the root `[project] dependencies`, `tools/build/build_extension.py` builds its wheel with the others, and its compiled component has its DECISIONS.md row. `tests/bpy_free/test_build_extension.py` checks that the cook's wheel builds and passes the linkage audit.
+- **`tools/build/native_build.py`** gains `COOK`, a `NativeModule` built to `build/cook/`, so the linkage audit and the pinned headers cover it.
 
 ## Tests
 
@@ -173,7 +173,7 @@ A step's order follows what its tests need to build a tree: a node can't be test
 ### Groundwork
 
 1. **This plan,** and the note's [Where It Lives](../phase3/node-tree.md#where-it-lives) pointing to it, in place of its sentence that Phase 3 has no plan file.
-2. **The package, empty.** `proscenium_cook` with its `pyproject.toml`, build hook, `COOK` in `tools/native_build.py`, an `_cook` that only loads, its READMEs and `AGENTS.md`, its import contracts, and a line in the root AGENTS.md's repository map. Tests: it imports without Blender's modules (`test_no_blender_imports.py`), and its wheel builds and passes the linkage audit.
+2. **The package, empty.** `proscenium_cook` with its `pyproject.toml`, build hook, `COOK` in `tools/build/native_build.py`, an `_cook` that only loads, its READMEs and `AGENTS.md`, its import contracts, and a line in the root AGENTS.md's repository map. Tests: it imports without Blender's modules (`test_no_blender_imports.py`), and its wheel builds and passes the linkage audit.
 3. **Reading the tree.** The node definitions file and its loader; the four roles' signatures, the registry, and the contexts ([Node Types in C++](#node-types-in-c)); `tools/node_attributes.py` and its pre-commit hook, tested on each socket kind and value-type family with a definitions file of test-only node types; the shared checks; `TreeCook` and the result types; checking the tree against the definitions (unknown node type, newer `node:version`, unknown input or property, a connection to nothing, a link between incompatible socket kinds, a cycle); decoding node IDs from prim names; the node graph and its topological order; the scheduler, which runs tasks in that order ([Evaluating the Tree](#evaluating-the-tree)); muting from each definition's pass-through. There are no node types yet, so every tree cooks to an empty result with diagnostics. Tests: malformed trees, one diagnostic each; the generator on test-only definitions; the definitions loader on malformed ones. The checks that need a node type are built here and tested in step 4, with its first types.
 
 ### Reading files

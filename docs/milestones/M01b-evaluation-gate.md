@@ -38,7 +38,7 @@
 
 **Follow-up updates if Hydra is adopted** (made in the same change as the decision):
 
-- `AGENTS.md`: the compiled core's source location (settled with the user in Phase F: `src/proscenium/core/`, inside the extension directory, with its C++ sources excluded from the zip), its build through `tools/build_extension.py`, C++ style and lint hooks (such as clang-format and clang-tidy), and how the core is tested.
+- `AGENTS.md`: the compiled core's source location (settled with the user in Phase F: `src/proscenium/core/`, inside the extension directory, with its C++ sources excluded from the zip), its build through `tools/build/build_extension.py`, C++ style and lint hooks (such as clang-format and clang-tidy), and how the core is tested.
 - [PROJECT.md](../PROJECT.md#compatibility-and-development) and the affected milestone files (M3, M5, M6, M8–M10, M13), whose Hydra-conditional notes become settled scope.
 
 **Tests:**

@@ -1,4 +1,4 @@
-"""tools/build_extension.py: the keys added to the staged manifest, and the cook's wheel."""
+"""tools/build/build_extension.py: the keys added to the staged manifest, and the cook's wheel."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""tools/native_build.py: when a built module counts as current."""
+"""tools/build/native_build.py: when a built module counts as current."""
 
 from __future__ import annotations
 

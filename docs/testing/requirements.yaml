@@ -115,7 +115,7 @@ requirements:
     rows:
       - id: COMP-01
         quote: "Minimum Blender version: 5.2 LTS."
-        oracle: "The manifest's blender_version_min is 5.2.0 and the built zip validates (tools/build_extension.py)."
+        oracle: "The manifest's blender_version_min is 5.2.0 and the built zip validates (tools/build/build_extension.py)."
       - id: COMP-02
         quote: "Use the OpenUSD version bundled with the supported Blender distribution."
         oracle: "Smoke tests find pxr inside Blender's bundle, and the extension zip contains no pxr or other USD build."
@@ -2749,7 +2749,7 @@ excluded:
     reason: "Design guidance for development; docs/feasibility/runtime-record.md is its result."
   - section: PROJECT.md#compatibility-and-development
     quotes: ["Keep development dependencies separate from distributable runtime dependencies; do not inadvertently bundle another OpenUSD build."]
-    reason: "True by construction: tools/build_extension.py bundles only the runtime lock's wheels."
+    reason: "True by construction: tools/build/build_extension.py bundles only the runtime lock's wheels."
   - section: spec/pipeline.md#synchronization-layer-boundaries
     quotes: ["USD stage + time code + binding settings + planning context"]
     reason: "Architecture outline of the layer inputs; PLAN-09 and APP-08 cover the boundaries."

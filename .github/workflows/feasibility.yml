@@ -5,6 +5,10 @@ name: Feasibility
 on:
   workflow_dispatch:
 
+# The probes use none of the packages' compiled modules, so uv sync doesn't build them (tools/build/native_build.py).
+env:
+  PROSCENIUM_SKIP_NATIVE_BUILD: "1"
+
 jobs:
   probes:
     strategy:

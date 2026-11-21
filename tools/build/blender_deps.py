@@ -4,7 +4,7 @@ The Blender release comes from uv.lock's bpy version (blender_release.py). Its g
 each precompiled-library repo's revision as a submodule under lib/; those are the pins. The cache
 is build/blender-deps/, shared by the planner and the feasibility bridge.
 
-Usage: python tools/blender_deps.py   # prints the dependency directory; progress goes to stderr
+Usage: python tools/build/blender_deps.py   # prints the dependency directory; progress goes to stderr
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from blender_release import blender_tag, blender_version
 
-CACHE = Path(__file__).resolve().parents[1] / "build" / "blender-deps"
+CACHE = Path(__file__).resolve().parents[2] / "build" / "blender-deps"
 
 BLENDER_URL = "https://projects.blender.org/blender/blender.git"
 

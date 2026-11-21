@@ -9,8 +9,8 @@ if(NOT (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
   message(FATAL_ERROR "Unsupported platform for the planner: ${CMAKE_SYSTEM_NAME}")
 endif()
 
-# The locked Blender release's headers (and Windows import libraries); tools/native_build.py passes them.
-set(BLENDER_DEPS "" CACHE PATH "Blender's dependency checkout (tools/blender_deps.py)")
+# The locked Blender release's headers (and Windows import libraries); tools/build/native_build.py passes them.
+set(BLENDER_DEPS "" CACHE PATH "Blender's dependency checkout (tools/build/blender_deps.py)")
 if(NOT EXISTS "${BLENDER_DEPS}/usd/include/pxr/pxr.h")
   message(FATAL_ERROR "Blender's dependency headers not found: '${BLENDER_DEPS}' (set BLENDER_DEPS)")
 endif()
