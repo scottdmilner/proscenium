@@ -5,7 +5,7 @@ These rules cover the cook's C++. [README.md](README.md) lists what each file ho
 ## Source and build
 
 - This directory holds only the cook: its C++, its type stubs, and the `__init__.py` that loads what it links. The package's wheel leaves out C++ sources and CMake files. Only the built module ships, in this package.
-- The cook builds as the planner does: through `tools/native_build.py` (`COOK`), from this directory only, against the dependency headers of the Blender release `uv.lock` pins, linking only to Blender's bundled `usd_ms`. `tools/build_extension.py` builds the module (`proscenium_cook.tree_cook._cook`, ignored by `.gitignore`) into this directory, where the dev environment's editable install imports it, and `proscenium_cook`'s build hook ships it in a wheel tagged for the platform.
+- The cook builds as the planner does: through `tools/build/native_build.py` (`COOK`), from this directory only, against the dependency headers of the Blender release `uv.lock` pins, linking only to Blender's bundled `usd_ms`. `proscenium_cook`'s build hook builds the module (`proscenium_cook.tree_cook._cook`, ignored by `.gitignore`) into this directory whenever `uv sync` sees a change to its sources, and the dev environment's editable install imports it from here; so does `tools/build/build_extension.py`, which ships it in a wheel tagged for the platform.
 - Its `CMakeLists.txt` sets the planner's flags. A change to one's flags changes the other's.
 
 ## Node types

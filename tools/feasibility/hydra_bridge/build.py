@@ -1,4 +1,4 @@
-"""Build the bridge module and audit its USD linkage for this platform (tools/native_build.py)."""
+"""Build the bridge module and audit its USD linkage for this platform (tools/build/native_build.py)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tools" / "build"))
 
 from native_build import HYDRA_BRIDGE, build_module  # noqa: E402
 

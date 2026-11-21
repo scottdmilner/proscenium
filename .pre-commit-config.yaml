@@ -1,22 +1,24 @@
 # Single source of truth for lint checks: runs as a git hook and in CI
 # (`uv run pre-commit run --all-files`). Hooks use the tool versions pinned in
-# uv.lock via `uv run --frozen`, so `uv sync` first.
+# uv.lock via `uv run --frozen`, so `uv sync` first. They don't sync themselves
+# (--no-sync): a sync rebuilds the compiled modules after a C++ change, and
+# would fail every hook while that C++ doesn't build (tools/build/README.md).
 repos:
   - repo: local
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: uv run --frozen ruff check --fix
+        entry: uv run --frozen --no-sync ruff check --fix
         language: system
         types_or: [python, pyi]
       - id: ruff-format
         name: ruff format
-        entry: uv run --frozen ruff format
+        entry: uv run --frozen --no-sync ruff format
         language: system
         types_or: [python, pyi]
       - id: ty
         name: ty check
-        entry: uv run --frozen ty check --error-on-warning  # warnings, unused ignore comments among them, fail too
+        entry: uv run --frozen --no-sync ty check --error-on-warning  # warnings, unused ignore comments among them, fail too
         language: system
         types_or: [python, pyi]
         pass_filenames: false
@@ -27,25 +29,25 @@ repos:
       # miss an edit made just after a run, and every run takes under a second without it.
       - id: import-linter
         name: lint-imports (the extension and between packages)
-        entry: uv run --frozen lint-imports --no-cache --config pyproject.toml
+        entry: uv run --frozen --no-sync lint-imports --no-cache --config pyproject.toml
         language: system
         files: (\.py|(^|/)pyproject\.toml)$
         pass_filenames: false
       - id: import-linter-sync
         name: lint-imports (proscenium_sync)
-        entry: uv run --frozen lint-imports --no-cache --config packages/proscenium_sync/pyproject.toml
+        entry: uv run --frozen --no-sync lint-imports --no-cache --config packages/proscenium_sync/pyproject.toml
         language: system
         files: ^packages/proscenium_sync/(.*\.py|pyproject\.toml)$
         pass_filenames: false
       - id: import-linter-ui
         name: lint-imports (proscenium_ui)
-        entry: uv run --frozen lint-imports --no-cache --config packages/proscenium_ui/pyproject.toml
+        entry: uv run --frozen --no-sync lint-imports --no-cache --config packages/proscenium_ui/pyproject.toml
         language: system
         files: ^packages/proscenium_ui/(.*\.py|pyproject\.toml)$
         pass_filenames: false
       - id: import-linter-cook
         name: lint-imports (proscenium_cook)
-        entry: uv run --frozen lint-imports --no-cache --config packages/proscenium_cook/pyproject.toml
+        entry: uv run --frozen --no-sync lint-imports --no-cache --config packages/proscenium_cook/pyproject.toml
         language: system
         files: ^packages/proscenium_cook/(.*\.py|pyproject\.toml)$
         pass_filenames: false
@@ -54,25 +56,25 @@ repos:
       # .clang-tidy, which covers all three.
       - id: clang-format
         name: clang-format
-        entry: uv run --frozen clang-format -i
+        entry: uv run --frozen --no-sync clang-format -i
         language: system
         files: ^(packages/proscenium_sync/src/proscenium_sync/planner|packages/proscenium_cook/src/proscenium_cook/tree_cook|tools/feasibility/hydra_bridge/src)/.*\.(cpp|h)$
       - id: clang-tidy
         name: clang-tidy
-        entry: uv run --frozen python tools/clang_tidy.py
+        entry: uv run --frozen --no-sync python tools/clang_tidy.py
         language: system
-        files: ^(\.clang-tidy|packages/proscenium_sync/src/proscenium_sync/planner/(.*\.(cpp|h)|(inspection/)?CMakeLists\.txt)|packages/proscenium_cook/src/proscenium_cook/tree_cook/(.*\.(cpp|h)|CMakeLists\.txt)|tools/feasibility/hydra_bridge/(src/.*\.(cpp|h)|CMakeLists\.txt)|tools/(clang_tidy|native_build|blender_deps)\.py)$
+        files: ^(\.clang-tidy|packages/proscenium_sync/src/proscenium_sync/planner/(.*\.(cpp|h)|(inspection/)?CMakeLists\.txt)|packages/proscenium_cook/src/proscenium_cook/tree_cook/(.*\.(cpp|h)|CMakeLists\.txt)|tools/feasibility/hydra_bridge/(src/.*\.(cpp|h)|CMakeLists\.txt)|tools/(clang_tidy|build/native_build|build/blender_deps)\.py)$
         pass_filenames: false
       # The cook's generated attribute headers match its node definitions (docs/plans/cook-module.md).
       - id: node-attributes
         name: node attribute headers
-        entry: uv run --frozen python tools/node_attributes.py check
+        entry: uv run --frozen --no-sync python tools/node_attributes.py check
         language: system
         files: ^(packages/proscenium_cook/src/proscenium_cook/(node_definitions\.usda|tree_cook/(\.clang-format|nodes/.*_attributes\.h))|tools/node_attributes\.py)$
         pass_filenames: false
       - id: matrix
         name: requirement matrix
-        entry: uv run --frozen python tools/matrix.py check
+        entry: uv run --frozen --no-sync python tools/matrix.py check
         language: system
         files: ^(docs/.*\.(md|yaml)|tests/fixtures/registry\.py|tools/matrix\.py)$
         pass_filenames: false

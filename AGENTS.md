@@ -43,7 +43,7 @@ Some directories have an `AGENTS.md` with rules for working there. Read it befor
 All commands run through uv. The dev group includes the `bpy` wheel, so `bpy` and `pxr` import in the uv environment without a Blender install.
 
 ```sh
-uv sync                                   # install the dev environment
+uv sync                                   # install the dev environment, building the compiled modules if their sources changed
 uv run pre-commit run --all-files         # all lint checks (ruff, ty, import-linter, clang-format, clang-tidy, lock, matrix); same as CI
 uv run pytest -n auto                     # all tests, in parallel; select layers with -m (e.g. -m bpy_free)
 uv run proscenium-build                   # dist/proscenium-<version>.zip for this platform (--check: read-only)
@@ -54,6 +54,8 @@ uv run pre-commit install                 # once per clone
 ```
 
 Tests that need the Blender binary find it as [tests/README.md](tests/README.md#running) says. Without a binary they are skipped.
+
+`uv run` syncs first, so after a change to the C++ it builds the compiled modules, and a build error fails the command. The pre-commit hooks don't sync, so the Git hook still runs then. To run other commands while the C++ doesn't build, pass `--no-sync` (`uv run --no-sync pre-commit run --all-files`), or set `PROSCENIUM_SKIP_NATIVE_BUILD=1`, which leaves the modules as they were; the first `uv run` without it builds them ([tools/build/README.md](tools/build/README.md)).
 
 ## Rules for every change
 
@@ -66,5 +68,5 @@ Tests that need the Blender binary find it as [tests/README.md](tests/README.md#
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - Keep Git commits small, self-contained, and parseable: one new feature per commit.
 - Make any change that takes more than two commits in a Git worktree of its own, not in the main checkout.
-- `tools/build_extension.py` is the only distribution build. Never publish or distribute the zip or any wheel ([tools/README.md](tools/README.md)).
+- `tools/build/build_extension.py` is the only distribution build. Never publish or distribute the zip or any wheel ([tools/README.md](tools/README.md)).
 - Never bundle another OpenUSD build. The extension uses the `pxr` bundled with Blender.

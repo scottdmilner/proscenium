@@ -396,7 +396,7 @@ A failure becomes a diagnostic plus a placeholder, never an exception thrown mid
 - `platforms` is an optional list of non-empty strings **[blender_ext.py:1990]**. Identifiers follow `platform_from_this_system()`: `macos-arm64`, `linux-x64`, `windows-x64` (also `windows-arm64`, `linux-arm64`, `macos-x64`) **[:2129-2169]**.
 - `--split-platforms` requires `platforms` **[:4593-4601]**. It **only filters `wheels`** by platform; every other file goes into every platform zip **[:2392-2418]**. Output names get a `-<platform>` suffix, and a `[build.generated] platforms = [...]` block is appended to the archived manifest **[:4776-4838]**.
   - Consequence: a loose `.so`/`.pyd` inside the extension directory is **not** filtered.
-  - Either build one zip per platform on that platform's runner, with only that platform's binary present and `platforms = ["<that one>"]`, which fits `tools/build_extension.py`'s "for the current platform" model.
+  - Either build one zip per platform on that platform's runner, with only that platform's binary present and `platforms = ["<that one>"]`, which fits `tools/build/build_extension.py`'s "for the current platform" model.
   - Or ship the native module as a per-platform **wheel** listed in `wheels`, which split-platforms filters automatically.
 - **Wheels** are extracted into a **shared** `<extensions>/.local/lib/python3.13/site-packages` **[bpy 5.2 scripts/modules/addon_utils.py:1393-1400, 1783-1810]**, which every extension shares. Bundle the module **inside the extension package** instead (e.g. `proscenium/_native/_core.cpython-313-darwin.so`), so it is private to Proscenium and versioned with it.
 - The CLI has no check that rejects binaries; it only skips compressing `.whl` files **[blender_ext.py:704-712]**.

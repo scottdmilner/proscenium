@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from filelock import FileLock
+
 from blender_deps import (
     LIBS,
     Platform,
@@ -36,7 +38,7 @@ from blender_deps import (
 )
 from blender_release import blender_tag
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 # The dev group's cmake and ninja, installed beside this interpreter.
 SCRIPTS = Path(sysconfig.get_path("scripts"))
 
@@ -62,12 +64,23 @@ class NativeModule:
         """The CMake build directory: beside out_dir, which holds only results."""
         return self.out_dir.with_name(self.out_dir.name + "-cmake")
 
+    @property
+    def lock(self) -> Path:
+        """Held while sync_module checks and builds the module, so two processes never build it at once."""
+        return self.out_dir.with_name(self.out_dir.name + ".lock")
+
 
 PLANNER = NativeModule(
     "_planner", ROOT / "packages/proscenium_sync/src/proscenium_sync/planner", ROOT / "build/planner"
 )
 COOK = NativeModule("_cook", ROOT / "packages/proscenium_cook/src/proscenium_cook/tree_cook", ROOT / "build/cook")
 HYDRA_BRIDGE = NativeModule("_hydra_bridge", ROOT / "tools/feasibility/hydra_bridge", ROOT / "build/hydra-bridge")
+# Set to 1, it keeps the packages' build hooks from building their modules for an editable install (CI, whose Linux
+# modules come from build-linux).
+SKIP_NATIVE_BUILD = "PROSCENIUM_SKIP_NATIVE_BUILD"
+# Held while a build resolves the Blender release and checks out its dependencies: builds of different modules run at
+# once (uv sync builds both packages together), and share build/blender-deps.
+DEPS_LOCK = ROOT / "build" / "blender-deps.lock"
 # What sync_module hashes to tell whether a module is current: its project's sources, and these build tools.
 SOURCE_PATTERNS = ("*.cpp", "*.h", "CMakeLists.txt")
 BUILD_TOOLS = (Path(__file__), Path(__file__).with_name("blender_deps.py"))
@@ -91,12 +104,20 @@ def sync_module(module: NativeModule, *, write: bool = True) -> Path:
     of its sources and the build tools, and the module's own hash. With write=False nothing is built: it fails unless
     the module is already current.
     """
-    inputs = _build_inputs(module.source_dir)
-    current = _current_module(module, inputs)
-    if current is not None:
-        return current
-    if not write:
-        raise SystemExit(f"{module.source_dir}: {module.name} is missing or out of date; run tools/build_extension.py")
+    module.lock.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(module.lock):
+        inputs = _build_inputs(module.source_dir)
+        current = _current_module(module, inputs)
+        if current is not None:
+            return current
+        if not write:
+            stale = f"{module.source_dir}: {module.name} is missing or out of date"
+            raise SystemExit(f"{stale}; run uv sync, or `uv run proscenium-build` without --check")
+        return _install_module(module, inputs)
+
+
+def _install_module(module: NativeModule, inputs: dict[str, Any]) -> Path:
+    """Build the module, put it in its source directory, and write its build record."""
     built = build_module(module)
     for stale in _installed_modules(module):
         stale.unlink()
@@ -150,8 +171,8 @@ def build_module(module: NativeModule, usd_library: Path | None = None) -> Nativ
     """Configure, build, and install the module's CMake project, then move the module into its out_dir and audit it."""
     key = current_platform()
     module.out_dir.mkdir(parents=True, exist_ok=True)
-    blender = release()
     command = configure(module, usd_library)
+    blender = release()  # cached by configure
     deps = deps_dir(key)
     env = build_env(key)
     subprocess.run([command[0], "--build", str(module.cmake_dir)], check=True, env=env)
@@ -183,8 +204,8 @@ def configure(module: NativeModule, usd_library: Path | None = None) -> list[str
     """
     source, build = module.source_dir, module.cmake_dir
     key = current_platform()
-    _check_installed_bpy(release())
-    deps = ensure_dependency_checkout(key)
+    blender, deps = _dependencies(key)
+    _check_installed_bpy(blender)
     command = [
         tool("cmake"), "-S", str(source), "-B", str(build), "-G", "Ninja",
         f"-DCMAKE_MAKE_PROGRAM={tool('ninja')}",
@@ -200,6 +221,13 @@ def configure(module: NativeModule, usd_library: Path | None = None) -> list[str
         command.append("--fresh")  # CMake refuses a cache made from another source directory, as before a move
     subprocess.run(command, check=True, env=build_env(key))
     return command
+
+
+def _dependencies(key: Platform) -> tuple[dict[str, str], Path]:
+    """The locked Blender release and the platform's dependency checkout, ensured under DEPS_LOCK."""
+    DEPS_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with FileLock(DEPS_LOCK):
+        return release(), ensure_dependency_checkout(key)
 
 
 def _cached_source(build: Path) -> Path | None:

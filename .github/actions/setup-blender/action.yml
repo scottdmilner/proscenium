@@ -20,8 +20,8 @@ runs:
       run: |
         version="${{ inputs.version }}"
         if [ -z "$version" ]; then
-          # The same source the Hydra bridge's dependency pins come from (tools/blender_release.py).
-          version=$(uv run --no-project python tools/blender_release.py)
+          # The same source the Hydra bridge's dependency pins come from (tools/build/blender_release.py).
+          version=$(uv run --no-project python tools/build/blender_release.py)
         fi
         case "${{ runner.os }}" in
           Linux) file=linux-x64.tar.xz ;;

@@ -1,10 +1,10 @@
 """Run clang-tidy on the repository's C++ with the compile commands of each build (a pre-commit hook).
 
-Three projects, which tools/native_build.py names: the planner (proscenium_sync's planner/), the cook
+Three projects, which tools/build/native_build.py names: the planner (proscenium_sync's planner/), the cook
 (proscenium_cook's tree_cook/), and M1b's Hydra bridge (tools/feasibility/hydra_bridge/), which M4's prototypes
 extend. It configures each one's CMake build directory, so
 clang-tidy parses each source with the flags and Blender headers that build uses. The first run fetches those headers
-(tools/blender_deps.py). clang-tidy finds the checks itself, in the repository's root .clang-tidy.
+(tools/build/blender_deps.py). clang-tidy finds the checks itself, in the repository's root .clang-tidy.
 """
 
 from __future__ import annotations

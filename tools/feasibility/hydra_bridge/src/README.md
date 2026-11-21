@@ -91,7 +91,7 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | File | Role |
 |---|---|
 | `../CMakeLists.txt` | The module's build against Blender's USD headers and libraries |
-| `../build.py` | Builds the module and audits its USD linkage for this platform, through `tools/native_build.py`; the headers come from `tools/blender_deps.py`, pinned by the Blender release in `uv.lock` |
+| `../build.py` | Builds the module and audits its USD linkage for this platform, through `tools/build/native_build.py`; the headers come from `tools/build/blender_deps.py`, pinned by the Blender release in `uv.lock` |
 | `../run_runtime_probes.py` | Runs the three probes with the same compiled module in the bpy wheel and the Blender binary |
 | `../native_bridge_probe.py` | Loading checks: stage exchange, time, inheritance, instancing and stage expiry, on `../stage_exchange.usda` |
 | `../end_to_end_display_probe.py` | Phase B smoke checks of capture, plan and application, on `../display_smoke.usda` |

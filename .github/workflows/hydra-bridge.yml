@@ -18,6 +18,10 @@ on:
       - ".github/workflows/hydra-bridge.yml"
       - "src/proscenium/**"
 
+# The bridge's checks use none of the packages' compiled modules, so uv sync doesn't build them (tools/build/native_build.py).
+env:
+  PROSCENIUM_SKIP_NATIVE_BUILD: "1"
+
 jobs:
   macos:
     runs-on: macos-latest

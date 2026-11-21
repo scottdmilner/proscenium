@@ -1,7 +1,7 @@
 name: Set up Blender dependencies
 description: >
   Restore build/blender-deps (the locked Blender release's headers and Windows import libraries), or fetch it with
-  tools/blender_deps.py and save it at once, so a later failing step doesn't lose the download. Needs setup-uv and git.
+  tools/build/blender_deps.py and save it at once, so a later failing step doesn't lose the download. Needs setup-uv and git.
 
 runs:
   using: composite
@@ -10,19 +10,19 @@ runs:
     - name: Pick the cache key
       id: key
       shell: bash
-      run: echo "version=$(uv run --no-project python tools/blender_release.py)" >> "$GITHUB_OUTPUT"
+      run: echo "version=$(uv run --no-project python tools/build/blender_release.py)" >> "$GITHUB_OUTPUT"
 
     - name: Restore Blender dependencies
       id: restore
       uses: actions/cache/restore@v4
       with:
         path: build/blender-deps
-        key: blender-deps-${{ runner.os }}-${{ steps.key.outputs.version }}-${{ hashFiles('tools/blender_deps.py') }}
+        key: blender-deps-${{ runner.os }}-${{ steps.key.outputs.version }}-${{ hashFiles('tools/build/blender_deps.py') }}
 
     - name: Fetch Blender dependencies
       if: steps.restore.outputs.cache-hit != 'true'
       shell: bash
-      run: uv run --no-project python tools/blender_deps.py
+      run: uv run --no-project python tools/build/blender_deps.py
 
     - name: Save Blender dependencies
       if: steps.restore.outputs.cache-hit != 'true'

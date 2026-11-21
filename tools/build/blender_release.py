@@ -4,7 +4,7 @@ The lock is the single source: CI downloads that Blender binary (.github/actions
 and the Hydra bridge builds against that release's pinned dependencies. Reads the lock rather
 than the installed wheel, so it works before `uv sync` and in isolated build environments.
 
-Usage: python tools/blender_release.py [--tag]
+Usage: python tools/build/blender_release.py [--tag]
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-LOCK = Path(__file__).resolve().parents[1] / "uv.lock"
+LOCK = Path(__file__).resolve().parents[2] / "uv.lock"
 
 
 def blender_version(lock: Path = LOCK) -> str:

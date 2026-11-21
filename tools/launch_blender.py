@@ -2,7 +2,7 @@
 
     uv run proscenium-blender [--blender PATH] [--fresh] [--no-build] [-- BLENDER_ARGS...]
 
-1. Build dist/proscenium-<version>.zip as tools/build_extension.py does, which
+1. Build dist/proscenium-<version>.zip as tools/build/build_extension.py does, which
    first syncs the source dir's wheels, manifest, and planner (--no-build: use
    the zip already there).
 2. Find a Blender binary of the locked release's minor version, the only one the

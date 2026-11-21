@@ -162,7 +162,7 @@ def _cook_compile_command() -> tuple[list[str], Path]:
     """The cook's build's command for python_bindings.cpp, as arguments, and the directory it runs in."""
     commands_path = native_build.COOK.cmake_dir / "compile_commands.json"
     if not commands_path.is_file():
-        pytest.skip("the cook's build isn't configured here (tools/build_extension.py configures it)")
+        pytest.skip("the cook's build isn't configured here (uv sync or tools/build/build_extension.py configures it)")
     for command in json.loads(commands_path.read_text(encoding="utf-8")):
         if Path(command["file"]).name == "python_bindings.cpp":
             arguments = command.get("arguments") or shlex.split(command["command"], posix=os.name != "nt")

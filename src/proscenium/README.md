@@ -1,6 +1,6 @@
 # `proscenium`
 
-The extension's source directory: what `tools/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration and the temporary UI. The synchronizer it registers, the widgets the temporary UI hosts, and the cook its node tree runs are the workspace's packages, `proscenium_sync`, `proscenium_ui`, and `proscenium_cook` ([`packages/`](../../packages/README.md)), which the extension depends on and its zip bundles as wheels.
+The extension's source directory: what `tools/build/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration and the temporary UI. The synchronizer it registers, the widgets the temporary UI hosts, and the cook its node tree runs are the workspace's packages, `proscenium_sync`, `proscenium_ui`, and `proscenium_cook` ([`packages/`](../../packages/README.md)), which the extension depends on and its zip bundles as wheels.
 
 | Path | Holds |
 |---|---|

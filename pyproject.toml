@@ -14,8 +14,10 @@ dependencies = ["proscenium_cook", "proscenium_sync", "proscenium_ui"]
 # tests/ and tools/feasibility/, so it needs pytest, python-dotenv, psutil, and numpy (which comes with bpy).
 # Revisit once the Hydra bridge in tools/feasibility/ is decommissioned.
 build = [
-    "cmake>=3.26",  # cmake and ninja build compiled modules (tools/native_build.py)
-    "hatchling>=1.27",  # builds proscenium_sync's wheel in this environment (tools/build_extension.py)
+    "cmake>=3.26",  # cmake and ninja build compiled modules (tools/build/native_build.py)
+    "editables>=0.5",  # hatchling's editable installs of the packages uv sync builds here (no-build-isolation-package)
+    "filelock>=3.20",  # concurrent native builds share the Blender headers safely (tools/build/native_build.py)
+    "hatchling>=1.27",  # builds proscenium_sync's wheel in this environment (tools/build/build_extension.py)
     "ninja>=1.13.2",
     "packaging>=26.3",
 ]
@@ -56,10 +58,10 @@ dev = [
     { include-group = "test" },
 ]
 
-# Development commands. They import from tools/, which only the editable install puts on sys.path.
+# Development commands. They import from tools/ and tools/build/, which only the editable install puts on sys.path.
 [project.scripts]
 proscenium-blender = "launch_blender:main"  # build, then run Blender with Proscenium enabled (tools/launch_blender.py)
-proscenium-build = "build_extension:main"  # dist/proscenium-<version>.zip (tools/build_extension.py)
+proscenium-build = "build_extension:main"  # dist/proscenium-<version>.zip (tools/build/build_extension.py)
 proscenium-matrix = "matrix:main"  # check or render the requirement matrix (tools/matrix.py)
 
 [build-system]
@@ -68,12 +70,18 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/proscenium"]
-# The editable install adds tools/ to sys.path beside src/, for [project.scripts].
-dev-mode-dirs = ["src", "tools"]
+# The editable install adds tools/ and tools/build/ to sys.path beside src/, for [project.scripts].
+dev-mode-dirs = ["src", "tools", "tools/build"]
 
 # uv's Python, never system Python, to ensure the platform always matches in testing (macOS)
 [tool.uv]
 python-preference = "only-managed"
+# The uv this setup was verified with: uv sync installs the environment, then builds the packages with compiled modules
+# in it, rerunning their build hooks when their cache-keys (globs, and an environment variable) change.
+required-version = ">=0.11.19"
+# The packages with compiled modules build in this environment, whose dev group has their build hooks' CMake, Ninja,
+# filelock, and the locked bpy wheel, for its USD library (tools/build/native_build.py).
+no-build-isolation-package = ["proscenium_cook", "proscenium_sync"]
 
 # Library packages the extension bundles as wheels (packages/README.md)
 [tool.uv.workspace]
@@ -88,7 +96,8 @@ proscenium_ui = { workspace = true }
 [tool.ruff]
 line-length = 120
 target-version = "py313"
-src = ["src", "packages/*/src", "tools", "tools/feasibility", "tests"]
+# Ruff's first-party modules are those directly in one of these dirs, so tools/build is listed beside tools.
+src = ["src", "packages/*/src", "tools", "tools/build", "tools/feasibility", "tests"]
 
 [tool.ruff.lint]
 future-annotations = true

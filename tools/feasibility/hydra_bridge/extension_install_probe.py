@@ -5,7 +5,7 @@
 
 `package` builds a test zip from a copy of src/proscenium with the bridge module (and its build.json) added to
 the core/ package and the manifest's `platforms` set to this platform, using the extension CLI shipped in the
-bpy wheel. The bridge stays test code: tools/build_extension.py, the product build, never sees it.
+bpy wheel. The bridge stays test code: tools/build/build_extension.py, the product build, never sees it.
 
 `install` runs three Blender binary sessions over one empty user directory, as a user installing from disk would:
 install and enable, then a new session that loads the extension from the saved preferences and runs the loading and

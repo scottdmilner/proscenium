@@ -7,6 +7,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# uv sync doesn't build the compiled modules here (tools/build/native_build.py): each job that needs them builds them with
+# tools/build/build_extension.py, after the blender-deps cache, and the Linux tests use build-linux's, on Blender's glibc floor.
+env:
+  PROSCENIUM_SKIP_NATIVE_BUILD: "1"
+
 jobs:
   # Docs-only pull requests skip the builds and tests. Lint always runs: its matrix hook checks docs/. A skipped job
   # counts as passing for required status checks. Pushes to main and manual runs always run everything.
@@ -48,7 +53,7 @@ jobs:
 
   # The project's compiled modules for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml).
   # The manylinux image lacks the desktop libraries bpy and Blender load, so the Linux tests run in the test job, where
-  # tools/build_extension.py uses the planner and the cook built here because their build records are current. The
+  # tools/build/build_extension.py uses the planner and the cook built here because their build records are current. The
   # planner's compile commands go with it, for the inspection layer's include check (tests/bpy_free/test_planner_inspection.py). The Hydra bridge,
   # which M4's prototype tests run, is built here too, since its build audits the same floor.
   build-linux:
@@ -68,7 +73,7 @@ jobs:
       - run: uv sync --locked
       - uses: ./.github/actions/blender-deps
       - name: Build the planner and the cook
-        run: uv run python tools/build_extension.py
+        run: uv run python tools/build/build_extension.py
       - name: Build the Hydra bridge
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - uses: actions/upload-artifact@v4
@@ -114,7 +119,7 @@ jobs:
       # Before the tests: it syncs src/proscenium/wheels (gitignored) from uv.lock and builds the planner and the
       # cook (on Linux, it keeps build-linux's), which the extension test's read-only build (--check mode) needs.
       - name: Build extension
-        run: uv run python tools/build_extension.py
+        run: uv run python tools/build/build_extension.py
 
       - name: Tests
         env:

@@ -100,7 +100,7 @@ def _skip_or_fail(message: str) -> NoReturn:
 
 @pytest.fixture(scope="session")
 def extension_zip(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The extension built by tools/build_extension.py into a temporary dir, without touching src/."""
+    """The extension built by tools/build/build_extension.py into a temporary dir, without touching src/."""
     return build(ROOT / "src" / "proscenium", tmp_path_factory.mktemp("dist"), sync=False)
 
 
