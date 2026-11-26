@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in \"$CLAUDE_PROJECT_DIR\"/*.py|\"$CLAUDE_PROJECT_DIR\"/*.pyi) ;; *) exit 0 ;; esac; cd \"$CLAUDE_PROJECT_DIR\" || exit 0; uv run --frozen --no-sync ruff check --fix --unfixable F401 --exit-zero --force-exclude --quiet \"$f\" >/dev/null 2>&1; uv run --frozen --no-sync ruff format --force-exclude --quiet \"$f\" >/dev/null 2>&1; exit 0",
+            "timeout": 30,
+            "statusMessage": "ruff: fixing and formatting"
+          }
+        ]
+      }
+    ]
+  }
+}
