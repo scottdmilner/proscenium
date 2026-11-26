@@ -1,0 +1,13 @@
+{
+    // IntelliSense reads the flags each native build exports (tools/build/native_build.py), so the planner, the cook,
+    // and the Hydra bridge parse with the same includes and defines as the real compile.
+    "C_Cpp.default.compileCommands": [
+        "${workspaceFolder}/build/planner-cmake/compile_commands.json",
+        "${workspaceFolder}/build/cook-cmake/compile_commands.json",
+        "${workspaceFolder}/build/hydra-bridge-cmake/compile_commands.json"
+    ],
+    // CMake Tools would otherwise provide its own configuration and override the compile commands above.
+    "C_Cpp.default.configurationProvider": "",
+    "cmake.configureOnOpen": false,
+    "cmake.ignoreCMakeListsMissing": true
+}
